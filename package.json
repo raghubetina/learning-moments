@@ -1,0 +1,40 @@
+{
+  "name": "learning-moments",
+  "version": "0.1.0",
+  "description": "Learning Moments is a local Claude Code hook tool for prompting brief, situated checks of developer understanding during AI-assisted programming.",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "learning-moments": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts"
+  },
+  "keywords": [
+    "claude-code",
+    "hooks",
+    "learning",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "minimatch": "^10.2.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
