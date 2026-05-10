@@ -114,7 +114,9 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
     short_id: pending.short_id,
     session_id: parsed.session_id,
     transcript_path: parsed.transcript_path,
-    cwd: parsed.cwd
+    cwd: parsed.cwd,
+    files: pending.files,
+    feedback: grade.feedback
   });
   await complete("feedback_injected", { moment_id: pending.id, short_id: pending.short_id });
 

@@ -3,7 +3,7 @@ import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
 import { candidateFiles } from "../../core/filter.js";
-import { changedSinceBaseline, diffForFiles, snapshot } from "../../core/git.js";
+import { changedSinceBaseline, contextForFiles, snapshot } from "../../core/git.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readEvents } from "../../core/log.js";
 import { redactSecrets } from "../../core/redaction.js";
@@ -47,9 +47,23 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
 
   const baseline = latestSessionBaseline(events, parsed.session_id) ?? {
     root: projectRoot,
+    head: current.head,
+    branch: current.branch,
     dirtyFiles: [],
     hashes: {}
   };
+  if (baseline.head !== current.head || baseline.branch !== current.branch) {
+    await appendEvent(projectRoot, {
+      type: "session_baseline_created",
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      snapshot: current,
+      reason: "head_or_branch_changed"
+    });
+    await complete("baseline_reset_head_or_branch_changed");
+    return null;
+  }
   const files = candidateFiles(changedSinceBaseline(baseline, current), config).slice(
     0,
     config.context_limits.max_paths
@@ -61,7 +75,7 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
 
   return withProjectLock(projectRoot, "moment-claim", async () => {
     const lockedEvents = await readEvents(projectRoot);
-    const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+    const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
     const fingerprint = candidateFingerprint(files, diff.text);
     const alreadySeen = lockedEvents.some(
       (event) =>

@@ -1,7 +1,7 @@
 import { classifyCandidate } from "../core/classifier.js";
 import { loadConfig } from "../core/config.js";
 import { candidateFiles } from "../core/filter.js";
-import { diffForFiles, dirtyFiles, findGitRoot } from "../core/git.js";
+import { contextForFiles, dirtyFiles, findGitRoot } from "../core/git.js";
 import { createId, shortId } from "../core/ids.js";
 import { appendEvent } from "../core/log.js";
 import { redactSecrets } from "../core/redaction.js";
@@ -15,7 +15,7 @@ export async function verifyCommand(): Promise<void> {
     return;
   }
 
-  const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+  const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
   const classification = result?.classification;
   if (!classification || !classification.eligible || classification.delivery === "discard") {

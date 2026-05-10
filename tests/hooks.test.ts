@@ -11,6 +11,7 @@ vi.mock("../src/core/claude.js", () => ({
 import { initCommand } from "../src/commands/init.js";
 import { postToolBatchHook } from "../src/commands/hooks/post-tool-batch.js";
 import { sessionStartHook } from "../src/commands/hooks/session-start.js";
+import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { readEvents } from "../src/core/log.js";
@@ -223,5 +224,111 @@ describe("hook flow", () => {
     expect(events.filter((event) => event.type === "classifier_called")).toHaveLength(1);
     expect(events.map((event) => event.type)).toContain("candidate_already_seen");
     expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets the baseline instead of classifying after branch or HEAD changes", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const common = {
+      session_id: "session-1",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({
+      ...common,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+
+    await fs.writeFile(path.join(root, "other.txt"), "other\n");
+    execFileSync("git", ["add", "other.txt"], { cwd: root, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "other"], { cwd: root, stdio: "ignore" });
+
+    const output = await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+
+    expect(output).toBeNull();
+    const events = await readEvents(root);
+    expect(events.filter((event) => event.type === "session_baseline_created")).toHaveLength(2);
+    expect(events.map((event) => event.type)).not.toContain("classifier_called");
+  });
+
+  it("logs visible feedback observation separately from question observation", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({
+        output: {
+          eligible: true,
+          timing: "ask_now",
+          delivery: "active",
+          moment_type: "predict",
+          learning_value: 3,
+          flow_cost: 1,
+          question: "What changed in README.md?",
+          expected_answer_outline: "The README changed.",
+          reason: "Useful documentation check.",
+          recall: {
+            schedule: false,
+            prompt_seed: "",
+            delay: "next_session"
+          },
+          storage: {
+            summary: "README changed.",
+            tags: ["docs"]
+          }
+        },
+        metrics: testMetrics
+      })
+      .mockResolvedValueOnce({
+        output: {
+          grade: 2,
+          label: "partially_correct",
+          feedback: "Partially correct: you named the file but not the verification.",
+          reason: "Incomplete verification.",
+          confidence: 0.8
+        },
+        metrics: testMetrics
+      });
+
+    const common = {
+      session_id: "session-1",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({
+      ...common,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+    await userPromptSubmitHook({
+      ...common,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "README.md changed."
+    });
+    await stopHook({
+      ...common,
+      hook_event_name: "Stop",
+      last_assistant_message: "Partially correct: you named the file but not the verification."
+    });
+
+    const events = await readEvents(root);
+    expect(events.map((event) => event.type)).toContain("feedback_observed");
   });
 });

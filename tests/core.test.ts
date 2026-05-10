@@ -4,7 +4,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, writeConfig } from "../src/core/config.js";
-import { changedSinceBaseline, snapshot } from "../src/core/git.js";
+import { changedSinceBaseline, contextForFiles, snapshot } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
 import { appendEvent, readEvents } from "../src/core/log.js";
 import { configPath, dataDir } from "../src/core/paths.js";
@@ -23,6 +23,26 @@ describe("ids", () => {
     const id = createId("moment", new Date("2026-05-10T12:34:56Z"));
     expect(id).toMatch(/^lm_moment_20260510_123456_[0-9a-f]{4}$/);
     expect(shortId(id)).toMatch(/^lm_[0-9a-f]{4}$/);
+  });
+
+  it("includes staged changes and untracked file contents in candidate context", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "tracked.txt"), "one\n");
+    git(["add", "tracked.txt"], root);
+    git(["commit", "-m", "initial"], root);
+
+    await fs.writeFile(path.join(root, "tracked.txt"), "two\n");
+    git(["add", "tracked.txt"], root);
+    expect(contextForFiles(root, ["tracked.txt"], 4000)).toContain("+two");
+
+    await fs.writeFile(path.join(root, "new-only.txt"), "brand new\n");
+    expect(contextForFiles(root, ["new-only.txt"], 4000)).toContain("brand new");
+
+    await fs.writeFile(path.join(root, "new-mixed.txt"), "also brand new\n");
+    const mixed = contextForFiles(root, ["tracked.txt", "new-mixed.txt"], 4000);
+    expect(mixed).toContain("+two");
+    expect(mixed).toContain("also brand new");
   });
 });
 

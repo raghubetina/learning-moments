@@ -35,7 +35,6 @@ program
 program
   .command("doctor")
   .description("Check Learning Moments installation")
-  .option("--fix", "reserved for future automatic safe fixes")
   .action(() => doctorCommand());
 
 program
@@ -98,52 +97,72 @@ async function readHookJson(): Promise<unknown> {
   return raw.trim().length > 0 ? JSON.parse(raw) : {};
 }
 
+async function runHook(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch {
+    process.exitCode = 0;
+  }
+}
+
 hook
   .command("post-tool-use")
   .description("Handle Claude Code PostToolUse events")
   .action(async () => {
-    await postToolUseHook(await readHookJson());
+    await runHook(async () => {
+      await postToolUseHook(await readHookJson());
+    });
   });
 
 hook
   .command("post-tool-batch")
   .description("Handle Claude Code PostToolBatch events")
   .action(async () => {
-    const output = await postToolBatchHook(await readHookJson());
-    if (output) {
-      printJson(output);
-    }
+    await runHook(async () => {
+      const output = await postToolBatchHook(await readHookJson());
+      if (output) {
+        printJson(output);
+      }
+    });
   });
 
 hook
   .command("user-prompt-submit")
   .description("Handle Claude Code UserPromptSubmit events")
   .action(async () => {
-    const output = await userPromptSubmitHook(await readHookJson());
-    if (output) {
-      printJson(output);
-    }
+    await runHook(async () => {
+      const output = await userPromptSubmitHook(await readHookJson());
+      if (output) {
+        printJson(output);
+      }
+    });
   });
 
 hook
   .command("user-prompt-expansion")
   .description("Handle Claude Code UserPromptExpansion events")
   .action(async () => {
-    await userPromptExpansionHook(await readHookJson());
+    await runHook(async () => {
+      await userPromptExpansionHook(await readHookJson());
+    });
   });
 
 hook
   .command("stop")
   .description("Handle Claude Code Stop events")
   .action(async () => {
-    await stopHook(await readHookJson());
+    await runHook(async () => {
+      await stopHook(await readHookJson());
+    });
   });
 
 hook
   .command("session-start")
   .description("Handle Claude Code SessionStart events")
   .action(async () => {
-    await sessionStartHook(await readHookJson());
+    await runHook(async () => {
+      await sessionStartHook(await readHookJson());
+    });
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
