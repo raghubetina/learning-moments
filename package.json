@@ -7,6 +7,9 @@
   "bin": {
     "learning-moments": "dist/cli.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "files": [
     "dist",
     "README.md",
@@ -16,16 +19,27 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "claude-code",
+    "claude-code-hooks",
     "hooks",
     "learning",
+    "ai-assisted-programming",
     "developer-tools"
   ],
-  "author": "",
+  "author": "Raghu Betina",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raghubetina/learning-moments.git"
+  },
+  "bugs": {
+    "url": "https://github.com/raghubetina/learning-moments/issues"
+  },
+  "homepage": "https://github.com/raghubetina/learning-moments#readme",
   "dependencies": {
     "commander": "^14.0.3",
     "minimatch": "^10.2.5",

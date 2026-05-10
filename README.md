@@ -1,16 +1,18 @@
 # Learning Moments
 
-Learning Moments is a local Claude Code hook tool for prompting brief, situated checks of developer understanding during AI-assisted programming.
+Learning Moments is an experimental Claude Code hook tool for prompting brief, situated checks of developer understanding during AI-assisted programming.
 
-This repository contains the implementation. The adjacent parent repository contains the paper drafts, research notes, and source corpus.
+The goal is not to quiz you constantly. Learning Moments watches for AI-authored project changes, asks Claude to classify whether there is a high-value learning checkpoint, and only interrupts when the classifier finds a specific moment worth asking about. If classification fails, declines, or times out, it fails open and asks nothing.
 
-## Current Status
+## Status
 
-This is an early prototype. It can:
+This is an early alpha. It is useful for local testing and research prototypes, not a polished production tool.
+
+Current capabilities:
 
 - initialize project-local Learning Moments data
 - install Claude Code hooks into `.claude/settings.local.json`
-- create slash command prompt files
+- create Claude Code slash command prompt files
 - record session Git baselines and AI-authored file changes
 - detect changed files since a session baseline
 - call Claude Code in print mode to classify high-value Learning Moments
@@ -20,13 +22,58 @@ This is an early prototype. It can:
 - pause/resume at project or session scope
 - remove installed hooks without deleting local learning data
 
-The classifier intentionally has no rules-based quizzing fallback. If the Claude-backed classifier fails, declines, or times out, Learning Moments logs the event and asks nothing.
+Not implemented yet:
 
-By default, classifier and grader calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
+- delayed recall prompts
+- confidence prompts
+- polished reporting/export
+- non-Claude Code agents
+
+## Requirements
+
+- Node.js 20+
+- Git
+- Claude Code
+- Claude Code authenticated on your machine
+
+Learning Moments uses `claude -p` internally for classification and grading, so it uses your existing Claude Code authentication and model configuration.
+
+## Install
+
+```bash
+npm install -g learning-moments
+```
+
+Then initialize it inside a Git project where you use Claude Code:
+
+```bash
+cd /path/to/your/project
+learning-moments init
+learning-moments doctor
+```
+
+Start Claude Code normally from that project directory. When Learning Moments detects a high-value checkpoint, Claude will ask a short question in the normal chat flow.
+
+## Commands
+
+```bash
+learning-moments init
+learning-moments doctor
+learning-moments status
+learning-moments pause --project
+learning-moments resume --project
+learning-moments verify
+learning-moments uninstall
+learning-moments delete-data
+```
+
+`uninstall` removes hooks and slash commands but keeps `.learning-moments/`.
+
+`delete-data` removes local Learning Moments data.
 
 ## Customization
 
-Learning Moments is intentionally moderately configurable. The plumbing and data shape stay fixed, while the user's goals and prompt policy live in project-local Markdown.
+Learning Moments is intentionally moderately configurable. The plumbing and data shape stay fixed, while your goals and prompt policy live in project-local Markdown.
 
 Editable files created by `learning-moments init`:
 
@@ -45,6 +92,8 @@ Editable config in `.learning-moments/config.json`:
 - ignored paths/extensions
 - context limits
 
+By default, classifier and grader calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
+
 Fixed in the MVP:
 
 - Claude Code hooks as the integration surface
@@ -54,9 +103,19 @@ Fixed in the MVP:
 - the 0-3 grading scale shape
 - fail-open behavior when Claude classification or grading fails
 
+## Privacy
+
+Learning Moments stores logs and configuration locally in `.learning-moments/`, which `init` adds to `.gitignore`.
+
+There is no Learning Moments backend and no external telemetry. However, classification and grading are not local inference: selected redacted context is sent through your configured Claude Code model provider by calling `claude -p`.
+
+The tool applies local pattern-based redaction before sending diffs to Claude, but redaction is not a guarantee. Review your project and configuration before using this on sensitive code.
+
 ## Development
 
 ```bash
+git clone https://github.com/raghubetina/learning-moments.git
+cd learning-moments
 npm install
 npm run build
 npm test
@@ -75,3 +134,7 @@ After building, the CLI entrypoint is:
 ```bash
 node dist/cli.js --help
 ```
+
+## License
+
+MIT
