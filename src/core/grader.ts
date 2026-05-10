@@ -48,10 +48,6 @@ function buildGradePrompt(instruction: string, input: GradeInput): string {
   return [
     instruction.trim(),
     "",
-    "Grade the user's answer to this Learning Moment. Be fair and concise.",
-    "Use grade 3 for a correct, specific answer; 2 for mostly correct but incomplete; 1 for weak or vague; 0 for incorrect or missing.",
-    "The feedback should be one short sentence the coding assistant can pass to the user.",
-    "",
     "Question:",
     input.question,
     "",

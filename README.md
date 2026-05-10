@@ -24,6 +24,36 @@ The classifier intentionally has no rules-based quizzing fallback. If the Claude
 
 By default, classifier and grader calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
 
+## Customization
+
+Learning Moments is intentionally moderately configurable. The plumbing and data shape stay fixed, while the user's goals and prompt policy live in project-local Markdown.
+
+Editable files created by `learning-moments init`:
+
+- `.learning-moments/profile.md`: skill-retention goals and preferences.
+- `.learning-moments/prompts/classify-change.md`: what counts as a valuable Learning Moment.
+- `.learning-moments/prompts/grade-answer.md`: grading rubric and feedback style.
+- `.learning-moments/prompts/answer-feedback.md`: reserved for feedback prompt tuning.
+- `.learning-moments/prompts/select-recall.md`: reserved for delayed recall selection.
+- `.learning-moments/prompts/verify.md`: reserved for manual verification prompts.
+
+Editable config in `.learning-moments/config.json`:
+
+- model aliases and timeouts for classifier/grader calls
+- immediate prompt frequency and minimum spacing
+- observe-only vs active mode
+- ignored paths/extensions
+- context limits
+
+Fixed in the MVP:
+
+- Claude Code hooks as the integration surface
+- Git diff-based candidate detection
+- the classifier and grader JSON schemas
+- Predict/Test/Recall as the moment types
+- the 0-3 grading scale shape
+- fail-open behavior when Claude classification or grading fails
+
 ## Development
 
 ```bash

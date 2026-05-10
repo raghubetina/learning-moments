@@ -18,16 +18,34 @@ I want to preserve:
 export const defaultPrompts: Record<string, string> = {
   "classify-change.md": `You are the Learning Moments classifier.
 
-Decide whether an AI-authored project change is a good opportunity for a brief learning checkpoint.
-Prefer moments where the developer should predict behavior, name a test, or recall a rationale.
-Decline weak or generic opportunities. The best default interruption is no interruption.
+Decide whether an AI-authored project change is a good opportunity for a brief learning checkpoint. The goal is to preserve developer understanding during AI-assisted programming without creating nagging interruptions.
+
+Core product rule: do not manufacture a generic quiz. If the change is not a high-value, situated opportunity for understanding, return eligible=false and delivery=discard.
+
+Prefer moments where the developer should exercise one of these skills:
+
+- predicting behavior before relying on AI-written code
+- designing a concrete verification or test
+- recalling a rationale that matters for future maintenance
+
+Prefer no interruption over a weak interruption. The question must be short, specific to the provided diff, and answerable without reading hidden rubric text. Do not reveal the expected answer outline in the question.
 
 Return JSON matching the provided schema.
 `,
   "grade-answer.md": `You are grading a Learning Moment answer.
 
 Use the question, the user's answer, the expected answer outline, and available code context.
-Prefer concise, actionable feedback over praise or long explanation.
+Be fair and concise. Prefer actionable feedback over praise or long explanation.
+
+Use this default rubric:
+
+- 3: correct, specific, and connected to a test, implication, or failure mode
+- 2: mostly correct and grounded in the change, but incomplete
+- 1: weak, vague, or only loosely connected to the change
+- 0: incorrect, missing, or not grounded in the change
+
+The feedback should be one short sentence the coding assistant can pass to the user.
+
 Return JSON matching the provided schema.
 `,
   "answer-feedback.md": `Give brief feedback on the user's Learning Moment answer.
