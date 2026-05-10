@@ -1,74 +1,150 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { runClaudeStructured } from "./claude.js";
+import type { LearningMomentsConfig } from "./config.js";
+import { defaultProfile, defaultPrompts } from "./defaults.js";
+import { profilePath, promptsDir } from "./paths.js";
+
 export interface ClassifierInput {
   files: string[];
   diff: string;
 }
 
-export interface ClassifierOutput {
-  eligible: boolean;
-  timing: "ask_now" | "ask_later";
-  delivery: "active" | "silent_log_only" | "discard";
-  moment_type: "predict" | "test" | "recall";
-  learning_value: number;
-  flow_cost: number;
-  question: string;
-  expected_answer_outline: string;
-  reason: string;
-  recall: {
-    schedule: boolean;
-    prompt_seed: string;
-    delay: "next_session";
-  };
-  storage: {
-    summary: string;
-    tags: string[];
-  };
-}
+export const classifierOutputSchema = z.object({
+  eligible: z.boolean(),
+  timing: z.enum(["ask_now", "ask_later"]),
+  delivery: z.enum(["active", "silent_log_only", "discard"]),
+  moment_type: z.enum(["predict", "test", "recall"]),
+  learning_value: z.number().int().min(0).max(3),
+  flow_cost: z.number().int().min(0).max(3),
+  question: z.string(),
+  expected_answer_outline: z.string(),
+  reason: z.string(),
+  recall: z.object({
+    schedule: z.boolean(),
+    prompt_seed: z.string(),
+    delay: z.literal("next_session")
+  }),
+  storage: z.object({
+    summary: z.string(),
+    tags: z.array(z.string())
+  })
+});
 
-export function classifyCandidate(input: ClassifierInput): ClassifierOutput {
-  const files = input.files.slice(0, 3);
-  if (files.length === 0 || input.diff.trim().length === 0) {
-    return {
-      eligible: false,
-      timing: "ask_later",
-      delivery: "discard",
-      moment_type: "recall",
-      learning_value: 0,
-      flow_cost: 0,
-      question: "",
-      expected_answer_outline: "",
-      reason: "No substantive changed files were available.",
-      recall: {
-        schedule: false,
-        prompt_seed: "",
-        delay: "next_session"
-      },
-      storage: {
-        summary: "No candidate change.",
-        tags: []
-      }
-    };
-  }
+export type ClassifierOutput = z.infer<typeof classifierOutputSchema>;
 
-  const fileList = files.map((file) => `\`${file}\``).join(", ");
-  return {
-    eligible: true,
-    timing: "ask_now",
-    delivery: "active",
-    moment_type: "predict",
-    learning_value: 3,
-    flow_cost: 2,
-    question: `Before we move on, what behavior or claim changed in ${fileList}, and what would you check to verify you understand it?`,
-    expected_answer_outline:
-      "A strong answer should identify the changed behavior or claim, name the affected file or area, and propose a concrete verification such as a test, manual check, or failure mode.",
-    reason: "A recent AI-authored project change is available for an understanding check.",
+const classifierJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    eligible: { type: "boolean" },
+    timing: { enum: ["ask_now", "ask_later"] },
+    delivery: { enum: ["active", "silent_log_only", "discard"] },
+    moment_type: { enum: ["predict", "test", "recall"] },
+    learning_value: { type: "integer", minimum: 0, maximum: 3 },
+    flow_cost: { type: "integer", minimum: 0, maximum: 3 },
+    question: { type: "string" },
+    expected_answer_outline: { type: "string" },
+    reason: { type: "string" },
     recall: {
-      schedule: true,
-      prompt_seed: `What changed in ${files[0]}, and how would you verify it?`,
-      delay: "next_session"
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        schedule: { type: "boolean" },
+        prompt_seed: { type: "string" },
+        delay: { const: "next_session" }
+      },
+      required: ["schedule", "prompt_seed", "delay"]
     },
     storage: {
-      summary: `Candidate change touching ${files.join(", ")}`,
-      tags: ["predict", "test-design"]
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        tags: { type: "array", items: { type: "string" } }
+      },
+      required: ["summary", "tags"]
     }
-  };
+  },
+  required: [
+    "eligible",
+    "timing",
+    "delivery",
+    "moment_type",
+    "learning_value",
+    "flow_cost",
+    "question",
+    "expected_answer_outline",
+    "reason",
+    "recall",
+    "storage"
+  ]
+};
+
+async function readTextOrDefault(filePath: string, fallback: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, "utf8");
+  } catch {
+    return fallback;
+  }
+}
+
+function buildClassifierPrompt(profile: string, instruction: string, input: ClassifierInput): string {
+  return [
+    instruction.trim(),
+    "",
+    "Core product rule: do not manufacture a generic quiz. If the change is not a high-value, situated opportunity for understanding, return eligible=false and delivery=discard.",
+    "",
+    "A strong Learning Moment should exercise one of these skills:",
+    "- predicting behavior before relying on AI-written code",
+    "- designing a concrete verification or test",
+    "- recalling a rationale that matters for future maintenance",
+    "",
+    "Prefer no interruption over a weak interruption. The question must be short, specific to the provided diff, and answerable without reading hidden rubric text.",
+    "Do not reveal the expected answer outline in the question.",
+    "",
+    "User profile:",
+    profile.trim(),
+    "",
+    "Changed files:",
+    input.files.map((file) => `- ${file}`).join("\n"),
+    "",
+    "Redacted diff:",
+    "```diff",
+    input.diff,
+    "```"
+  ].join("\n");
+}
+
+export async function classifyCandidate(
+  projectRoot: string,
+  config: LearningMomentsConfig,
+  input: ClassifierInput
+): Promise<ClassifierOutput | null> {
+  if (input.files.length === 0 || input.diff.trim().length === 0) {
+    return null;
+  }
+
+  const [profile, instruction] = await Promise.all([
+    readTextOrDefault(profilePath(projectRoot), defaultProfile),
+    readTextOrDefault(
+      path.join(promptsDir(projectRoot), "classify-change.md"),
+      defaultPrompts["classify-change.md"] ?? ""
+    )
+  ]);
+
+  try {
+    const raw = await runClaudeStructured({
+      projectRoot,
+      config,
+      prompt: buildClassifierPrompt(profile, instruction, input),
+      schema: classifierJsonSchema,
+      model: config.claude.classifier_model,
+      timeoutSeconds: config.claude.classifier_timeout_seconds
+    });
+    return classifierOutputSchema.parse(raw);
+  } catch {
+    return null;
+  }
 }

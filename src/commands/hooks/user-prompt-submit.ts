@@ -1,4 +1,6 @@
 import { findGitRoot } from "../../core/git.js";
+import { loadConfig } from "../../core/config.js";
+import { gradeAnswer } from "../../core/grader.js";
 import { appendEvent, readEvents } from "../../core/log.js";
 import { pendingInjectedMoment } from "../../core/state.js";
 import type { AdditionalContextOutput } from "../../types/hooks.js";
@@ -14,6 +16,7 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
   }
   const parsed = userPromptSubmitInputSchema.parse(input);
   const projectRoot = findGitRoot(parsed.cwd);
+  const config = await loadConfig(projectRoot);
   const events = await readEvents(projectRoot);
   const pending = pendingInjectedMoment(events, parsed.session_id);
   if (!pending) {
@@ -44,6 +47,39 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
     source: "UserPromptSubmit"
   });
 
+  const grade = await gradeAnswer(projectRoot, config, {
+    question: pending.question,
+    expectedAnswerOutline: pending.expected_answer_outline,
+    answer: parsed.prompt,
+    files: pending.files
+  });
+
+  if (!grade) {
+    await appendEvent(projectRoot, {
+      type: "grader_failed_open",
+      moment_id: pending.id,
+      short_id: pending.short_id,
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd
+    });
+    return null;
+  }
+
+  await appendEvent(projectRoot, {
+    type: "grade_created",
+    moment_id: pending.id,
+    short_id: pending.short_id,
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    grade: grade.grade,
+    label: grade.label,
+    feedback: grade.feedback,
+    grader_reason: grade.reason,
+    confidence: grade.confidence
+  });
+
   await appendEvent(projectRoot, {
     type: "feedback_injected",
     moment_id: pending.id,
@@ -62,10 +98,11 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
         "Question:",
         pending.question,
         "",
-        "Expected answer outline:",
-        pending.expected_answer_outline ?? "(none recorded)",
+        "Give the user this brief feedback:",
+        grade.feedback,
         "",
-        "Give brief feedback: correct / partially correct / likely incorrect, with one sentence explaining why. Do not over-elaborate unless the user asks."
+        `Internal grade: ${grade.grade}/3 (${grade.label}, confidence ${grade.confidence}).`,
+        "Do not mention the numeric grade unless the user asks."
       ].join("\n")
     }
   };

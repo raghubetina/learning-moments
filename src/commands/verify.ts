@@ -16,7 +16,11 @@ export async function verifyCommand(): Promise<void> {
   }
 
   const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
-  const classification = classifyCandidate({ files, diff: diff.text });
+  const classification = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+  if (!classification || !classification.eligible || classification.delivery === "discard") {
+    console.log("No high-value Learning Moment found for the current dirty changes.");
+    return;
+  }
   const momentId = createId("moment");
   const displayId = shortId(momentId);
   await appendEvent(projectRoot, {

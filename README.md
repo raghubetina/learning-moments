@@ -13,13 +13,16 @@ This is an early prototype. It can:
 - create slash command prompt files
 - record session Git baselines and AI-authored file changes
 - detect changed files since a session baseline
+- call Claude Code in print mode to classify high-value Learning Moments
 - inject an initial question through hook `additionalContext`
 - capture the next user answer through `UserPromptSubmit`
-- inject the hidden answer outline only after the user answers
+- grade the answer with Claude Code and inject brief feedback
 - pause/resume at project or session scope
 - remove installed hooks without deleting local learning data
 
-The classifier is currently deterministic and conservative. The next major implementation step is replacing that boundary with the LLM-based classifier/grader while preserving the tested state machine.
+The classifier intentionally has no rules-based quizzing fallback. If the Claude-backed classifier fails, declines, or times out, Learning Moments logs the event and asks nothing.
+
+By default, classifier and grader calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
 
 ## Development
 

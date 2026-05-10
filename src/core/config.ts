@@ -37,6 +37,7 @@ export const configSchema = z.object({
     ask_when_useful: z.boolean()
   }),
   claude: z.object({
+    enabled: z.boolean().default(true),
     classifier_model: z.string(),
     grading_model: z.string(),
     classifier_timeout_seconds: z.number().int().min(1),
@@ -80,10 +81,11 @@ export const defaultConfig: LearningMomentsConfig = {
     ask_when_useful: true
   },
   claude: {
-    classifier_model: "default",
-    grading_model: "default",
-    classifier_timeout_seconds: 20,
-    grader_timeout_seconds: 20,
+    enabled: true,
+    classifier_model: "opus",
+    grading_model: "opus",
+    classifier_timeout_seconds: 45,
+    grader_timeout_seconds: 45,
     no_hooks_settings_file: ".learning-moments/claude-no-hooks-settings.json",
     use_bare_when_compatible: false
   }

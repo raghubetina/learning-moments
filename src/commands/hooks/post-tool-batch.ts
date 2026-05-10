@@ -51,8 +51,28 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
     });
 
     const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
-    const classification = classifyCandidate({ files, diff: diff.text });
+    const classification = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+    if (!classification) {
+      await appendEvent(projectRoot, {
+        type: "classifier_failed_open",
+        session_id: parsed.session_id,
+        transcript_path: parsed.transcript_path,
+        cwd: parsed.cwd,
+        files,
+        redaction_findings: diff.findings
+      });
+      return null;
+    }
     if (!classification.eligible || classification.delivery === "discard") {
+      await appendEvent(projectRoot, {
+        type: "classifier_declined",
+        session_id: parsed.session_id,
+        transcript_path: parsed.transcript_path,
+        cwd: parsed.cwd,
+        files,
+        reason: classification.reason,
+        redaction_findings: diff.findings
+      });
       return null;
     }
 

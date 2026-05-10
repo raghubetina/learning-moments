@@ -20,12 +20,14 @@ export const defaultPrompts: Record<string, string> = {
 
 Decide whether an AI-authored project change is a good opportunity for a brief learning checkpoint.
 Prefer moments where the developer should predict behavior, name a test, or recall a rationale.
+Decline weak or generic opportunities. The best default interruption is no interruption.
 
 Return JSON matching the provided schema.
 `,
   "grade-answer.md": `You are grading a Learning Moment answer.
 
 Use the question, the user's answer, the expected answer outline, and available code context.
+Prefer concise, actionable feedback over praise or long explanation.
 Return JSON matching the provided schema.
 `,
   "answer-feedback.md": `Give brief feedback on the user's Learning Moment answer.
