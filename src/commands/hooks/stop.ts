@@ -7,11 +7,21 @@ export async function stopHook(input: unknown): Promise<void> {
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
     return;
   }
+  const startedAt = Date.now();
   const parsed = stopHookInputSchema.parse(input);
   const projectRoot = findGitRoot(parsed.cwd);
   const events = await readEvents(projectRoot);
   const pending = pendingInjectedMoment(events, parsed.session_id);
   if (!pending) {
+    await appendEvent(projectRoot, {
+      type: "hook_completed",
+      hook_event_name: parsed.hook_event_name,
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      duration_ms: Date.now() - startedAt,
+      outcome: "no_pending_moment"
+    });
     return;
   }
 
@@ -24,5 +34,16 @@ export async function stopHook(input: unknown): Promise<void> {
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
     source: "Stop.last_assistant_message"
+  });
+  await appendEvent(projectRoot, {
+    type: "hook_completed",
+    hook_event_name: parsed.hook_event_name,
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    duration_ms: Date.now() - startedAt,
+    outcome: asked ? "question_observed" : "moment_injection_missed",
+    moment_id: pending.id,
+    short_id: pending.short_id
   });
 }

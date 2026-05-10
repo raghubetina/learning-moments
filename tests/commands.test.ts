@@ -2,13 +2,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCommand } from "../src/commands/init.js";
+import { metricsCommand } from "../src/commands/metrics.js";
 import { pauseCommand } from "../src/commands/pause.js";
 import { resumeCommand } from "../src/commands/resume.js";
 import { uninstallCommand } from "../src/commands/uninstall.js";
 import { loadConfig } from "../src/core/config.js";
 import { readJsonFile } from "../src/core/file-utils.js";
+import { appendEvent } from "../src/core/log.js";
 
 let previousCwd: string;
 
@@ -86,5 +88,46 @@ describe("pause and resume", () => {
     await expect(loadConfig(root)).resolves.toMatchObject({
       paused: { project: false }
     });
+  });
+});
+
+describe("metricsCommand", () => {
+  it("summarizes hook and Claude call metrics as JSON", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, {
+      type: "hook_completed",
+      hook_event_name: "PostToolBatch",
+      duration_ms: 12,
+      outcome: "classifier_declined",
+      cwd: root
+    });
+    await appendEvent(root, {
+      type: "classifier_called",
+      cwd: root
+    });
+    await appendEvent(root, {
+      type: "classifier_completed",
+      cwd: root,
+      metrics: {
+        wall_duration_ms: 1500,
+        total_cost_usd: 0.02,
+        input_tokens: 100,
+        output_tokens: 10
+      }
+    });
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await metricsCommand({ json: true, since: "24h" });
+      const summary = JSON.parse(String(log.mock.calls[0]?.[0]));
+      expect(summary.hooks.total).toBe(1);
+      expect(summary.classifier.calls).toBe(1);
+      expect(summary.classifier.completed).toBe(1);
+      expect(summary.classifier.total_cost_usd).toBe(0.02);
+    } finally {
+      log.mockRestore();
+    }
   });
 });

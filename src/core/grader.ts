@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import type { ClaudeCallMetrics } from "./claude.js";
 import { runClaudeStructured } from "./claude.js";
 import type { LearningMomentsConfig } from "./config.js";
 import { defaultPrompts } from "./defaults.js";
@@ -22,6 +23,11 @@ export const gradeOutputSchema = z.object({
 });
 
 export type GradeOutput = z.infer<typeof gradeOutputSchema>;
+
+export interface GradeResult {
+  grade: GradeOutput;
+  metrics: ClaudeCallMetrics;
+}
 
 const gradeJsonSchema = {
   type: "object",
@@ -66,14 +72,14 @@ export async function gradeAnswer(
   projectRoot: string,
   config: LearningMomentsConfig,
   input: GradeInput
-): Promise<GradeOutput | null> {
+): Promise<GradeResult | null> {
   const instruction = await readTextOrDefault(
     path.join(promptsDir(projectRoot), "grade-answer.md"),
     defaultPrompts["grade-answer.md"] ?? ""
   );
 
   try {
-    const raw = await runClaudeStructured({
+    const result = await runClaudeStructured({
       projectRoot,
       config,
       prompt: buildGradePrompt(instruction, input),
@@ -81,7 +87,10 @@ export async function gradeAnswer(
       model: config.claude.grading_model,
       timeoutSeconds: config.claude.grader_timeout_seconds
     });
-    return gradeOutputSchema.parse(raw);
+    return {
+      grade: gradeOutputSchema.parse(result.output),
+      metrics: result.metrics
+    };
   } catch {
     return null;
   }

@@ -14,12 +14,27 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
     return null;
   }
+  const startedAt = Date.now();
   const parsed = userPromptSubmitInputSchema.parse(input);
   const projectRoot = findGitRoot(parsed.cwd);
+  const complete = async (outcome: string, extra: Record<string, unknown> = {}): Promise<void> => {
+    await appendEvent(projectRoot, {
+      type: "hook_completed",
+      hook_event_name: parsed.hook_event_name,
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      duration_ms: Date.now() - startedAt,
+      outcome,
+      ...extra
+    });
+  };
+
   const config = await loadConfig(projectRoot);
   const events = await readEvents(projectRoot);
   const pending = pendingInjectedMoment(events, parsed.session_id);
   if (!pending) {
+    await complete("no_pending_moment");
     return null;
   }
 
@@ -33,6 +48,7 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
       cwd: parsed.cwd,
       reason: parsed.prompt
     });
+    await complete("skip_recorded", { moment_id: pending.id, short_id: pending.short_id });
     return null;
   }
 
@@ -47,14 +63,14 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
     source: "UserPromptSubmit"
   });
 
-  const grade = await gradeAnswer(projectRoot, config, {
+  const gradeResult = await gradeAnswer(projectRoot, config, {
     question: pending.question,
     expectedAnswerOutline: pending.expected_answer_outline,
     answer: parsed.prompt,
     files: pending.files
   });
 
-  if (!grade) {
+  if (!gradeResult) {
     await appendEvent(projectRoot, {
       type: "grader_failed_open",
       moment_id: pending.id,
@@ -63,8 +79,20 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd
     });
+    await complete("grader_failed_open", { moment_id: pending.id, short_id: pending.short_id });
     return null;
   }
+
+  const grade = gradeResult.grade;
+  await appendEvent(projectRoot, {
+    type: "grader_completed",
+    moment_id: pending.id,
+    short_id: pending.short_id,
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    metrics: gradeResult.metrics
+  });
 
   await appendEvent(projectRoot, {
     type: "grade_created",
@@ -88,6 +116,7 @@ export async function userPromptSubmitHook(input: unknown): Promise<AdditionalCo
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd
   });
+  await complete("feedback_injected", { moment_id: pending.id, short_id: pending.short_id });
 
   return {
     hookSpecificOutput: {

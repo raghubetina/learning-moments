@@ -65,6 +65,7 @@ Focus on understanding, prediction, testing, or recall rather than generic code 
 
 export const slashCommandPrompts: Record<string, string> = {
   "status.md": `Run \`learning-moments status\` and summarize the result briefly.`,
+  "metrics.md": `Run \`learning-moments metrics\` and summarize the speed, interruption, and estimated cost results briefly.`,
   "pause.md": `Run \`learning-moments pause --project\`, then summarize the result briefly.`,
   "resume.md": `Run \`learning-moments resume --project\`, then summarize the result briefly.`,
   "verify.md": `Ask Learning Moments to verify the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.`

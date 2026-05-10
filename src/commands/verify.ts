@@ -16,7 +16,8 @@ export async function verifyCommand(): Promise<void> {
   }
 
   const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
-  const classification = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+  const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+  const classification = result?.classification;
   if (!classification || !classification.eligible || classification.delivery === "discard") {
     console.log("No high-value Learning Moment found for the current dirty changes.");
     return;

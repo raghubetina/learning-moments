@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import type { ClaudeCallMetrics } from "./claude.js";
 import { runClaudeStructured } from "./claude.js";
 import type { LearningMomentsConfig } from "./config.js";
 import { defaultProfile, defaultPrompts } from "./defaults.js";
@@ -33,6 +34,11 @@ export const classifierOutputSchema = z.object({
 });
 
 export type ClassifierOutput = z.infer<typeof classifierOutputSchema>;
+
+export interface ClassifierResult {
+  classification: ClassifierOutput;
+  metrics: ClaudeCallMetrics;
+}
 
 const classifierJsonSchema = {
   type: "object",
@@ -111,7 +117,7 @@ export async function classifyCandidate(
   projectRoot: string,
   config: LearningMomentsConfig,
   input: ClassifierInput
-): Promise<ClassifierOutput | null> {
+): Promise<ClassifierResult | null> {
   if (input.files.length === 0 || input.diff.trim().length === 0) {
     return null;
   }
@@ -125,7 +131,7 @@ export async function classifyCandidate(
   ]);
 
   try {
-    const raw = await runClaudeStructured({
+    const result = await runClaudeStructured({
       projectRoot,
       config,
       prompt: buildClassifierPrompt(profile, instruction, input),
@@ -133,7 +139,10 @@ export async function classifyCandidate(
       model: config.claude.classifier_model,
       timeoutSeconds: config.claude.classifier_timeout_seconds
     });
-    return classifierOutputSchema.parse(raw);
+    return {
+      classification: classifierOutputSchema.parse(result.output),
+      metrics: result.metrics
+    };
   } catch {
     return null;
   }

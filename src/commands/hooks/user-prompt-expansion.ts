@@ -6,6 +6,7 @@ export async function userPromptExpansionHook(input: unknown): Promise<void> {
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
     return;
   }
+  const startedAt = Date.now();
   const parsed = commonHookInputSchema.parse(input);
   const projectRoot = findGitRoot(parsed.cwd);
   await appendEvent(projectRoot, {
@@ -14,5 +15,14 @@ export async function userPromptExpansionHook(input: unknown): Promise<void> {
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
     hook_event_name: parsed.hook_event_name
+  });
+  await appendEvent(projectRoot, {
+    type: "hook_completed",
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    hook_event_name: parsed.hook_event_name,
+    duration_ms: Date.now() - startedAt,
+    outcome: "slash_command_observed"
   });
 }

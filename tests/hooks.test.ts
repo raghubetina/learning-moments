@@ -17,6 +17,19 @@ import { readEvents } from "../src/core/log.js";
 
 let previousCwd: string;
 
+const testMetrics = {
+  wall_duration_ms: 1200,
+  duration_ms: 1000,
+  duration_api_ms: 900,
+  total_cost_usd: 0.01,
+  input_tokens: 100,
+  output_tokens: 20,
+  cache_creation_input_tokens: 0,
+  cache_read_input_tokens: 0,
+  num_turns: 1,
+  requested_model: "opus"
+};
+
 async function tempGitRepo(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-hook-test-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: root, stdio: "ignore" });
@@ -42,32 +55,38 @@ describe("hook flow", () => {
     await initCommand({});
     vi.mocked(runClaudeStructured)
       .mockResolvedValueOnce({
-        eligible: true,
-        timing: "ask_now",
-        delivery: "active",
-        moment_type: "predict",
-        learning_value: 3,
-        flow_cost: 1,
-        question: "What changed in README.md, and how would you verify your understanding?",
-        expected_answer_outline:
-          "A strong answer names the README claim and proposes a concrete docs verification.",
-        reason: "The documentation claim changed and is suitable for a brief understanding check.",
-        recall: {
-          schedule: true,
-          prompt_seed: "What changed in README.md?",
-          delay: "next_session"
+        output: {
+          eligible: true,
+          timing: "ask_now",
+          delivery: "active",
+          moment_type: "predict",
+          learning_value: 3,
+          flow_cost: 1,
+          question: "What changed in README.md, and how would you verify your understanding?",
+          expected_answer_outline:
+            "A strong answer names the README claim and proposes a concrete docs verification.",
+          reason: "The documentation claim changed and is suitable for a brief understanding check.",
+          recall: {
+            schedule: true,
+            prompt_seed: "What changed in README.md?",
+            delay: "next_session"
+          },
+          storage: {
+            summary: "README documentation claim changed.",
+            tags: ["documentation", "verification"]
+          }
         },
-        storage: {
-          summary: "README documentation claim changed.",
-          tags: ["documentation", "verification"]
-        }
+        metrics: testMetrics
       })
       .mockResolvedValueOnce({
-        grade: 3,
-        label: "correct",
-        feedback: "Correct: you identified the README claim and named a concrete verification.",
-        reason: "The answer matched the expected outline.",
-        confidence: 0.92
+        output: {
+          grade: 3,
+          label: "correct",
+          feedback: "Correct: you identified the README claim and named a concrete verification.",
+          reason: "The answer matched the expected outline.",
+          confidence: 0.92
+        },
+        metrics: testMetrics
       });
 
     const common = {
@@ -108,6 +127,9 @@ describe("hook flow", () => {
     expect(events.map((event) => event.type)).toContain("moment_created");
     expect(events.map((event) => event.type)).toContain("moment_injected");
     expect(events.map((event) => event.type)).toContain("answer_received");
+    expect(events.map((event) => event.type)).toContain("classifier_completed");
+    expect(events.map((event) => event.type)).toContain("grader_completed");
+    expect(events.map((event) => event.type)).toContain("hook_completed");
     expect(events.map((event) => event.type)).toContain("grade_created");
     expect(runClaudeStructured).toHaveBeenCalledTimes(2);
   });
@@ -142,5 +164,64 @@ describe("hook flow", () => {
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).toContain("classifier_failed_open");
     expect(events.map((event) => event.type)).not.toContain("moment_injected");
+  });
+
+  it("does not reclassify the same candidate fingerprint in one session", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: {
+        eligible: false,
+        timing: "ask_later",
+        delivery: "discard",
+        moment_type: "predict",
+        learning_value: 0,
+        flow_cost: 0,
+        question: "",
+        expected_answer_outline: "",
+        reason: "Not worth interrupting.",
+        recall: {
+          schedule: false,
+          prompt_seed: "",
+          delay: "next_session"
+        },
+        storage: {
+          summary: "Declined.",
+          tags: []
+        }
+      },
+      metrics: testMetrics
+    });
+
+    const common = {
+      session_id: "session-1",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({
+      ...common,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+    await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+
+    const events = await readEvents(root);
+    expect(events.filter((event) => event.type === "classifier_called")).toHaveLength(1);
+    expect(events.map((event) => event.type)).toContain("candidate_already_seen");
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
   });
 });

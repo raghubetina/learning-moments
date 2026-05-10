@@ -9,6 +9,7 @@ import { stopHook } from "./commands/hooks/stop.js";
 import { userPromptExpansionHook } from "./commands/hooks/user-prompt-expansion.js";
 import { userPromptSubmitHook } from "./commands/hooks/user-prompt-submit.js";
 import { initCommand } from "./commands/init.js";
+import { metricsCommand } from "./commands/metrics.js";
 import { overrideCommand } from "./commands/override.js";
 import { pauseCommand } from "./commands/pause.js";
 import { resumeCommand } from "./commands/resume.js";
@@ -41,6 +42,16 @@ program
   .command("status")
   .description("Show Learning Moments status")
   .action(() => statusCommand());
+
+program
+  .command("metrics")
+  .description("Show Learning Moments speed and cost metrics")
+  .option("--json", "print machine-readable JSON")
+  .option("--since <window>", "time window such as 30m, 24h, or 7d", "24h")
+  .option("--session <id>", "limit to a Claude Code session")
+  .action((options: { json?: boolean; since?: string; session?: string }) =>
+    metricsCommand(options)
+  );
 
 program
   .command("uninstall")

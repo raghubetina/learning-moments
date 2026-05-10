@@ -19,6 +19,7 @@ Current capabilities:
 - inject an initial question through hook `additionalContext`
 - capture the next user answer through `UserPromptSubmit`
 - grade the answer with Claude Code and inject brief feedback
+- report hook latency and Claude-reported token/cost estimates
 - pause/resume at project or session scope
 - remove installed hooks without deleting local learning data
 
@@ -60,6 +61,7 @@ Start Claude Code normally from that project directory. When Learning Moments de
 learning-moments init
 learning-moments doctor
 learning-moments status
+learning-moments metrics
 learning-moments pause --project
 learning-moments resume --project
 learning-moments verify
@@ -70,6 +72,28 @@ learning-moments delete-data
 `uninstall` removes hooks and slash commands but keeps `.learning-moments/`.
 
 `delete-data` removes local Learning Moments data.
+
+## Performance and Cost Visibility
+
+Learning Moments records local hook timing and Claude-reported classifier/grader usage in `.learning-moments/moments.jsonl`.
+
+Use:
+
+```bash
+learning-moments metrics
+learning-moments metrics --since 7d
+learning-moments metrics --json
+```
+
+The metrics command reports:
+
+- hook run counts, median latency, and p95 latency
+- classifier calls, declines, fail-open events, and duplicate candidates skipped
+- grader calls and fail-open events
+- estimated classifier/grader cost from Claude Code output
+- prompt, answer, skip, and grade counts
+
+Cost values are Claude Code's reported estimates. They may not match marginal dollars charged on a subscription plan.
 
 ## Customization
 

@@ -1,6 +1,7 @@
 import { immediatePromptBudgetAvailable, classifierBudgetAvailable } from "../../core/budget.js";
 import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
+import { candidateFingerprint } from "../../core/fingerprint.js";
 import { candidateFiles } from "../../core/filter.js";
 import { changedSinceBaseline, diffForFiles, snapshot } from "../../core/git.js";
 import { createId, shortId } from "../../core/ids.js";
@@ -15,16 +16,32 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
     return null;
   }
+  const startedAt = Date.now();
   const parsed = postToolBatchInputSchema.parse(input);
   const current = snapshot(parsed.cwd);
   const projectRoot = current.root;
+  const complete = async (outcome: string, extra: Record<string, unknown> = {}): Promise<void> => {
+    await appendEvent(projectRoot, {
+      type: "hook_completed",
+      hook_event_name: parsed.hook_event_name,
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      duration_ms: Date.now() - startedAt,
+      outcome,
+      ...extra
+    });
+  };
+
   const config = await loadConfig(projectRoot);
   if (!config.enabled || config.paused.project) {
+    await complete("disabled_or_paused");
     return null;
   }
 
   const events = await readEvents(projectRoot);
   if (!classifierBudgetAvailable(events, config)) {
+    await complete("classifier_budget_exhausted");
     return null;
   }
 
@@ -38,31 +55,70 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
     config.context_limits.max_paths
   );
   if (files.length === 0) {
+    await complete("no_candidate");
     return null;
   }
 
   return withProjectLock(projectRoot, "moment-claim", async () => {
     const lockedEvents = await readEvents(projectRoot);
+    const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+    const fingerprint = candidateFingerprint(files, diff.text);
+    const alreadySeen = lockedEvents.some(
+      (event) =>
+        event.session_id === parsed.session_id &&
+        event.candidate_fingerprint === fingerprint &&
+        ["classifier_called", "candidate_already_seen"].includes(event.type)
+    );
+
+    if (alreadySeen) {
+      await appendEvent(projectRoot, {
+        type: "candidate_already_seen",
+        session_id: parsed.session_id,
+        transcript_path: parsed.transcript_path,
+        cwd: parsed.cwd,
+        files,
+        candidate_fingerprint: fingerprint,
+        redaction_findings: diff.findings
+      });
+      await complete("candidate_already_seen", { candidate_fingerprint: fingerprint });
+      return null;
+    }
+
     await appendEvent(projectRoot, {
       type: "classifier_called",
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
-      cwd: parsed.cwd
+      cwd: parsed.cwd,
+      files,
+      candidate_fingerprint: fingerprint
     });
 
-    const diff = redactSecrets(diffForFiles(projectRoot, files, config.context_limits.max_diff_chars));
-    const classification = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
-    if (!classification) {
+    const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+    if (!result) {
       await appendEvent(projectRoot, {
         type: "classifier_failed_open",
         session_id: parsed.session_id,
         transcript_path: parsed.transcript_path,
         cwd: parsed.cwd,
         files,
+        candidate_fingerprint: fingerprint,
         redaction_findings: diff.findings
       });
+      await complete("classifier_failed_open", { candidate_fingerprint: fingerprint });
       return null;
     }
+
+    await appendEvent(projectRoot, {
+      type: "classifier_completed",
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      files,
+      candidate_fingerprint: fingerprint,
+      metrics: result.metrics
+    });
+
+    const classification = result.classification;
     if (!classification.eligible || classification.delivery === "discard") {
       await appendEvent(projectRoot, {
         type: "classifier_declined",
@@ -70,9 +126,11 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
         transcript_path: parsed.transcript_path,
         cwd: parsed.cwd,
         files,
+        candidate_fingerprint: fingerprint,
         reason: classification.reason,
         redaction_findings: diff.findings
       });
+      await complete("classifier_declined", { candidate_fingerprint: fingerprint });
       return null;
     }
 
@@ -88,6 +146,7 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
       question: classification.question,
       expected_answer_outline: classification.expected_answer_outline,
       classifier_reason: classification.reason,
+      candidate_fingerprint: fingerprint,
       redaction_findings: diff.findings
     };
 
@@ -110,6 +169,7 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
         ...baseEvent,
         reason: config.mode === "observe_only" ? "observe_only" : "budget_or_delivery"
       });
+      await complete("moment_silenced", { candidate_fingerprint: fingerprint });
       return null;
     }
 
@@ -117,6 +177,7 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
       type: "moment_injected",
       ...baseEvent
     });
+    await complete("moment_injected", { candidate_fingerprint: fingerprint });
 
     return {
       hookSpecificOutput: {

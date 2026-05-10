@@ -14,6 +14,7 @@ export async function postToolUseHook(input: unknown): Promise<void> {
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
     return;
   }
+  const startedAt = Date.now();
   const parsed = toolHookInputSchema.parse(input);
   const projectRoot = findGitRoot(parsed.cwd);
   const filePath = toolFilePath(parsed.tool_input);
@@ -26,5 +27,14 @@ export async function postToolUseHook(input: unknown): Promise<void> {
     tool_name: parsed.tool_name,
     tool_use_id: parsed.tool_use_id,
     files: filePath ? [filePath] : []
+  });
+  await appendEvent(projectRoot, {
+    type: "hook_completed",
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    hook_event_name: parsed.hook_event_name,
+    duration_ms: Date.now() - startedAt,
+    outcome: filePath ? "change_detected" : "no_file_path"
   });
 }
