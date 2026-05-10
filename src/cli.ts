@@ -9,8 +9,12 @@ import { stopHook } from "./commands/hooks/stop.js";
 import { userPromptExpansionHook } from "./commands/hooks/user-prompt-expansion.js";
 import { userPromptSubmitHook } from "./commands/hooks/user-prompt-submit.js";
 import { initCommand } from "./commands/init.js";
+import { overrideCommand } from "./commands/override.js";
+import { pauseCommand } from "./commands/pause.js";
+import { resumeCommand } from "./commands/resume.js";
 import { statusCommand } from "./commands/status.js";
 import { uninstallCommand } from "./commands/uninstall.js";
+import { verifyCommand } from "./commands/verify.js";
 import { printJson, readStdin } from "./core/stdin.js";
 
 const program = new Command();
@@ -42,6 +46,34 @@ program
   .command("uninstall")
   .description("Remove Learning Moments hooks and slash commands without deleting learning data")
   .action(() => uninstallCommand());
+
+program
+  .command("pause")
+  .description("Pause Learning Moments")
+  .option("--project", "pause the project")
+  .option("--session <id>", "pause a specific Claude Code session")
+  .action((options: { project?: boolean; session?: string }) => pauseCommand(options));
+
+program
+  .command("resume")
+  .description("Resume Learning Moments")
+  .option("--project", "resume the project")
+  .option("--session <id>", "resume a specific Claude Code session")
+  .action((options: { project?: boolean; session?: string }) => resumeCommand(options));
+
+program
+  .command("verify")
+  .description("Create a Learning Moment for the current dirty project changes")
+  .action(() => verifyCommand());
+
+program
+  .command("override <moment-id>")
+  .description("Record a manual grade override")
+  .requiredOption("--grade <0-3>", "manual grade")
+  .option("--note <text>", "short note explaining the override")
+  .action((momentId: string, options: { grade: string; note?: string }) =>
+    overrideCommand(momentId, options)
+  );
 
 program
   .command("delete-data")

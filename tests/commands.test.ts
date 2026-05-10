@@ -4,6 +4,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initCommand } from "../src/commands/init.js";
+import { pauseCommand } from "../src/commands/pause.js";
+import { resumeCommand } from "../src/commands/resume.js";
 import { uninstallCommand } from "../src/commands/uninstall.js";
 import { loadConfig } from "../src/core/config.js";
 import { readJsonFile } from "../src/core/file-utils.js";
@@ -65,6 +67,24 @@ describe("uninstallCommand", () => {
     await expect(fs.stat(path.join(root, ".learning-moments", "config.json"))).resolves.toBeTruthy();
     await expect(fs.stat(path.join(root, ".claude", "commands", "learning-moments"))).rejects.toMatchObject({
       code: "ENOENT"
+    });
+  });
+});
+
+describe("pause and resume", () => {
+  it("updates project pause state", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+
+    await initCommand({});
+    await pauseCommand({ project: true });
+    await expect(loadConfig(root)).resolves.toMatchObject({
+      paused: { project: true }
+    });
+
+    await resumeCommand({ project: true });
+    await expect(loadConfig(root)).resolves.toMatchObject({
+      paused: { project: false }
     });
   });
 });
