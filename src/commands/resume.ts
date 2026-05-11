@@ -23,5 +23,9 @@ export async function resumeCommand(options: ResumeOptions): Promise<void> {
     paused: false,
     cwd: projectRoot
   });
-  console.log(options.session && !options.project ? `Resumed session ${options.session}.` : "Resumed project.");
+  console.log(
+    options.session && !options.project
+      ? `Learning Moments resumed for session ${options.session}.`
+      : "Learning Moments resumed for this project."
+  );
 }

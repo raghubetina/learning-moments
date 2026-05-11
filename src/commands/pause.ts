@@ -23,5 +23,9 @@ export async function pauseCommand(options: PauseOptions): Promise<void> {
     paused: true,
     cwd: projectRoot
   });
-  console.log(options.session && !options.project ? `Paused session ${options.session}.` : "Paused project.");
+  console.log(
+    options.session && !options.project
+      ? `Learning Moments paused for session ${options.session}.`
+      : "Learning Moments paused for this project."
+  );
 }

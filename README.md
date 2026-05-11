@@ -1,6 +1,6 @@
 # Learning Moments
 
-Learning Moments is an experimental Claude Code hook tool for prompting brief, situated checks of developer understanding during AI-assisted programming.
+Learning Moments is an experimental Claude Code hook tool for asking brief questions tied to the code you are working on during AI-assisted programming.
 
 The goal is not to quiz you constantly. Learning Moments watches for AI-authored project changes, asks Claude whether there is a high-value Learning Moment, and only interrupts when there is a specific moment worth asking about. If that check fails, declines, or times out, Learning Moments asks nothing and lets your Claude Code workflow continue.
 
@@ -87,8 +87,8 @@ learning-moments metrics --json
 The metrics command reports:
 
 - hook run counts, median latency, and p95 latency
-- moment-selection attempts, declined moments, quiet failures, and repeated changes skipped
-- answer-feedback attempts and quiet failures
+- moment-selection attempts, declined moments, selection failures that did not interrupt your workflow, and repeated changes skipped
+- answer-feedback attempts and feedback failures that did not interrupt your workflow
 - estimated cost for moment selection and answer feedback from Claude Code output
 - prompt, answer, skip, and grade counts
 
@@ -130,9 +130,9 @@ Fixed in the MVP:
 
 Learning Moments stores logs and configuration locally in `.learning-moments/`, which `init` adds to `.gitignore`.
 
-There is no Learning Moments backend and no external telemetry. However, moment selection and answer feedback are not local inference: selected redacted context is sent through your configured Claude Code model provider by calling `claude -p`.
+There is no Learning Moments backend and no external telemetry. However, moment selection and answer feedback are not local inference: selected redacted code context is sent through your configured Claude Code model provider by calling `claude -p`.
 
-The tool applies local pattern-based redaction before sending diffs to Claude, but redaction is not a guarantee. Review your project and configuration before using this on sensitive code.
+The tool applies local pattern-based redaction before sending changes to Claude, but redaction is not a guarantee. Review your project and configuration before using this on sensitive code.
 
 ## Development
 

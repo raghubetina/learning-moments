@@ -12,7 +12,7 @@ export async function uninstallCommand(): Promise<void> {
     force: true
   });
 
-  console.log("Learning Moments hooks removed.");
+  console.log("Learning Moments hooks and slash commands removed.");
   if (local) {
     console.log(`Updated: ${local}`);
   }

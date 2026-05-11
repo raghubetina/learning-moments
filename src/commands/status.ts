@@ -11,13 +11,14 @@ export async function statusCommand(): Promise<void> {
   const skipped = events.filter((event) => event.type === "skip_recorded").length;
   const lastError = [...events].reverse().find((event) => event.type === "hook_error");
 
+  const mode = config.mode === "observe_only" ? "observe only (logging, no questions)" : config.mode;
   console.log(`Learning Moments: ${config.enabled ? "enabled" : "disabled"}`);
-  console.log(`Mode: ${config.mode}`);
+  console.log(`Mode: ${mode}`);
   console.log(`Project paused: ${config.paused.project ? "yes" : "no"}`);
   console.log(`Questions/hour: ${config.frequency.immediate_prompts_per_hour}`);
   console.log(`Minimum minutes between questions: ${config.frequency.minimum_minutes_between_immediate_prompts}`);
   console.log(`Scheduled recall questions: ${pendingRecalls}`);
-  console.log(`Answered/skipped: ${answered}/${skipped}`);
+  console.log(`Questions answered/skipped: ${answered}/${skipped}`);
   if (lastError) {
     console.log(`Last hook error: ${lastError.timestamp} ${String(lastError.reason ?? lastError.message ?? "")}`);
   }

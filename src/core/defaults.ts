@@ -20,7 +20,7 @@ export const defaultPrompts: Record<string, string> = {
 
 Decide whether an AI-authored project change is a good opportunity for a brief Learning Moment. The goal is to preserve developer understanding during AI-assisted programming without creating nagging interruptions.
 
-Core product rule: do not manufacture a generic quiz. If the change is not a high-value, situated opportunity for understanding, return eligible=false and delivery=discard.
+Selection rule: do not manufacture a generic quiz. If the change is not a high-value, situated opportunity for understanding, return eligible=false and delivery=discard.
 
 Prefer moments where the developer should exercise one of these skills:
 

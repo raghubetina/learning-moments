@@ -55,24 +55,24 @@ export async function doctorCommand(): Promise<void> {
     checks.push({ name: "Git repo", ok: false, detail: error instanceof Error ? error.message : String(error) });
   }
 
-  checks.push({ name: "Data directory", ok: await pathExists(dataDir(projectRoot)) });
+  checks.push({ name: "Learning Moments data", ok: await pathExists(dataDir(projectRoot)) });
   checks.push({ name: "learning-moments command", ok: await commandAvailable("learning-moments", ["--version"]) });
   checks.push({ name: "Claude Code command", ok: await commandAvailable("claude", ["--version"]) });
   try {
     await loadConfig(projectRoot);
-    checks.push({ name: "Config", ok: true });
+    checks.push({ name: "Configuration", ok: true });
   } catch (error) {
-    checks.push({ name: "Config", ok: false, detail: error instanceof Error ? error.message : String(error) });
+    checks.push({ name: "Configuration", ok: false, detail: error instanceof Error ? error.message : String(error) });
   }
   checks.push({ name: "Profile", ok: await pathExists(profilePath(projectRoot)) });
-  checks.push({ name: "Prompts", ok: await pathExists(promptsDir(projectRoot)) });
-  checks.push({ name: "No-hooks settings", ok: await pathExists(noHooksSettingsPath(projectRoot)) });
-  checks.push({ name: ".learning-moments gitignored", ok: await gitignored(projectRoot) });
+  checks.push({ name: "Prompt files", ok: await pathExists(promptsDir(projectRoot)) });
+  checks.push({ name: "Internal Claude settings", ok: await pathExists(noHooksSettingsPath(projectRoot)) });
+  checks.push({ name: "Learning data ignored by Git", ok: await gitignored(projectRoot) });
   checks.push({
     name: "Claude local settings",
     ok: await pathExists(settingsPath(projectRoot, false)) || await pathExists(settingsPath(projectRoot, true))
   });
-  checks.push({ name: "Log path writable", ok: await writable(logPath(projectRoot)) });
+  checks.push({ name: "Can write local log", ok: await writable(logPath(projectRoot)) });
 
   for (const check of checks) {
     console.log(`${check.ok ? "ok" : "fail"} ${check.name}${check.detail ? ` - ${check.detail}` : ""}`);

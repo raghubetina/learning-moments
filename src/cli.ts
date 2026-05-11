@@ -22,7 +22,7 @@ const program = new Command();
 
 program
   .name("learning-moments")
-  .description("Claude Code hooks for situated developer learning checks")
+  .description("Claude Code hooks for brief questions tied to the code you are working on")
   .version("0.1.0");
 
 program
@@ -73,7 +73,7 @@ program
 
 program
   .command("verify")
-  .description("Create a Learning Moment for the current uncommitted project changes")
+  .description("Check your understanding of the current uncommitted project changes")
   .action(() => verifyCommand());
 
 program

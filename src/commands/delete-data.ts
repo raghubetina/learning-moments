@@ -5,5 +5,5 @@ import { dataDir } from "../core/paths.js";
 export async function deleteDataCommand(): Promise<void> {
   const projectRoot = findGitRoot(process.cwd());
   await fs.rm(dataDir(projectRoot), { recursive: true, force: true });
-  console.log("Deleted .learning-moments/ data.");
+  console.log("Deleted local Learning Moments data (.learning-moments/).");
 }

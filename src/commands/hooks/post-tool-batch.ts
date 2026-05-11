@@ -197,14 +197,14 @@ export async function postToolBatchHook(input: unknown): Promise<AdditionalConte
       hookSpecificOutput: {
         hookEventName: "PostToolBatch",
         additionalContext: [
-          "Learning Moments selected an ask-now checkpoint.",
+          "Learning Moments found a question for the user.",
           "",
           "Ask the user this question before explaining the change further:",
           "",
           `Learning Moment \`${displayId}\``,
           classification.question,
           "",
-          "Wait for the user's answer before giving any explanation. Include the marker in the question."
+          "Wait for the user's answer before giving any explanation. Include the Learning Moment ID in the question."
         ].join("\n")
       }
     };
