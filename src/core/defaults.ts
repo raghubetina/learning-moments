@@ -68,5 +68,5 @@ export const slashCommandPrompts: Record<string, string> = {
   "metrics.md": `Run \`learning-moments metrics\` and summarize the speed, interruption, and estimated cost results briefly.`,
   "pause.md": `Run \`learning-moments pause --project\`, then summarize the result briefly.`,
   "resume.md": `Run \`learning-moments resume --project\`, then summarize the result briefly.`,
-  "verify.md": `Ask Learning Moments to verify the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.`
+  "verify.md": `Ask Learning Moments to verify my understanding of the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.`
 };
