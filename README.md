@@ -54,6 +54,23 @@ learning-moments doctor
 
 Start Claude Code normally from that project directory. When Learning Moments detects a high-value checkpoint, Claude will ask a short question in the normal chat flow.
 
+## Upgrade
+
+Update the global CLI:
+
+```bash
+npm install -g learning-moments@latest
+```
+
+Then run this inside each project that uses Learning Moments:
+
+```bash
+learning-moments init
+learning-moments doctor
+```
+
+`init` is safe to rerun. It updates missing hook and slash command files without deleting your local Learning Moments data.
+
 ## Commands
 
 ```bash
@@ -71,6 +88,14 @@ learning-moments delete-data
 `uninstall` removes hooks and slash commands but keeps `.learning-moments/`.
 
 `delete-data` removes local Learning Moments data.
+
+To remove the global CLI from your machine:
+
+```bash
+npm uninstall -g learning-moments
+```
+
+For a full project cleanup, run `learning-moments uninstall`, then `learning-moments delete-data`, then remove the global npm package if you no longer use it anywhere.
 
 ## Performance and Cost Visibility
 
