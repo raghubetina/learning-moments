@@ -14,9 +14,9 @@ export async function statusCommand(): Promise<void> {
   console.log(`Learning Moments: ${config.enabled ? "enabled" : "disabled"}`);
   console.log(`Mode: ${config.mode}`);
   console.log(`Project paused: ${config.paused.project ? "yes" : "no"}`);
-  console.log(`Immediate prompts/hour: ${config.frequency.immediate_prompts_per_hour}`);
-  console.log(`Minimum minutes between prompts: ${config.frequency.minimum_minutes_between_immediate_prompts}`);
-  console.log(`Pending recalls: ${pendingRecalls}`);
+  console.log(`Questions/hour: ${config.frequency.immediate_prompts_per_hour}`);
+  console.log(`Minimum minutes between questions: ${config.frequency.minimum_minutes_between_immediate_prompts}`);
+  console.log(`Scheduled recall questions: ${pendingRecalls}`);
   console.log(`Answered/skipped: ${answered}/${skipped}`);
   if (lastError) {
     console.log(`Last hook error: ${lastError.timestamp} ${String(lastError.reason ?? lastError.message ?? "")}`);

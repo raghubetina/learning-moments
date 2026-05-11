@@ -2,7 +2,7 @@
 
 Learning Moments is an experimental Claude Code hook tool for prompting brief, situated checks of developer understanding during AI-assisted programming.
 
-The goal is not to quiz you constantly. Learning Moments watches for AI-authored project changes, asks Claude to classify whether there is a high-value learning checkpoint, and only interrupts when the classifier finds a specific moment worth asking about. If classification fails, declines, or times out, it fails open and asks nothing.
+The goal is not to quiz you constantly. Learning Moments watches for AI-authored project changes, asks Claude whether there is a high-value Learning Moment, and only interrupts when there is a specific moment worth asking about. If that check fails, declines, or times out, Learning Moments asks nothing and lets your Claude Code workflow continue.
 
 ## Status
 
@@ -13,12 +13,11 @@ Current capabilities:
 - initialize project-local Learning Moments data
 - install Claude Code hooks into `.claude/settings.local.json`
 - create Claude Code slash command prompt files
-- record session Git baselines and AI-authored file changes
-- detect changed files since a session baseline
-- call Claude Code in print mode to classify high-value Learning Moments
-- inject an initial question through hook `additionalContext`
-- capture the next user answer through `UserPromptSubmit`
-- grade the answer with Claude Code and inject brief feedback
+- track AI-authored file changes during a Claude Code session
+- ask Claude whether those changes contain a high-value Learning Moment
+- ask an initial question in the normal Claude Code flow
+- capture the next user answer
+- use Claude Code to provide brief graded feedback
 - report hook latency and Claude-reported token/cost estimates
 - pause/resume at project or session scope
 - remove installed hooks without deleting local learning data
@@ -37,7 +36,7 @@ Not implemented yet:
 - Claude Code
 - Claude Code authenticated on your machine
 
-Learning Moments uses `claude -p` internally for classification and grading, so it uses your existing Claude Code authentication and model configuration.
+Learning Moments uses `claude -p` internally to select moments and give answer feedback, so it uses your existing Claude Code authentication and model configuration.
 
 ## Install
 
@@ -75,7 +74,7 @@ learning-moments delete-data
 
 ## Performance and Cost Visibility
 
-Learning Moments records local hook timing and Claude-reported classifier/grader usage in `.learning-moments/moments.jsonl`.
+Learning Moments records local hook timing and Claude-reported usage for moment selection and answer feedback in `.learning-moments/moments.jsonl`.
 
 Use:
 
@@ -88,16 +87,16 @@ learning-moments metrics --json
 The metrics command reports:
 
 - hook run counts, median latency, and p95 latency
-- classifier calls, declines, fail-open events, and duplicate candidates skipped
-- grader calls and fail-open events
-- estimated classifier/grader cost from Claude Code output
+- moment-selection attempts, declined moments, quiet failures, and repeated changes skipped
+- answer-feedback attempts and quiet failures
+- estimated cost for moment selection and answer feedback from Claude Code output
 - prompt, answer, skip, and grade counts
 
 Cost values are Claude Code's reported estimates. They may not match marginal dollars charged on a subscription plan.
 
 ## Customization
 
-Learning Moments is intentionally moderately configurable. The plumbing and data shape stay fixed, while your goals and prompt policy live in project-local Markdown.
+Learning Moments is configurable in the places you are most likely to tune. The integration code and log format stay fixed, while your goals and prompt policy live in project-local Markdown.
 
 Editable files created by `learning-moments init`:
 
@@ -110,28 +109,28 @@ Editable files created by `learning-moments init`:
 
 Editable config in `.learning-moments/config.json`:
 
-- model aliases and timeouts for classifier/grader calls
+- model aliases and timeouts for moment-selection and answer-feedback calls
 - immediate prompt frequency and minimum spacing
-- observe-only vs active mode
+- observe-only mode vs asking questions
 - ignored paths/extensions
 - context limits
 
-By default, classifier and grader calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
+By default, moment-selection and answer-feedback calls use Claude Code's `opus` model alias. You can change this in `.learning-moments/config.json`.
 
 Fixed in the MVP:
 
 - Claude Code hooks as the integration surface
-- Git diff-based candidate detection
-- the classifier and grader JSON schemas
+- Git-based change detection
+- structured response schemas for moment selection and answer feedback
 - Predict/Test/Recall as the moment types
 - the 0-3 grading scale shape
-- fail-open behavior when Claude classification or grading fails
+- quiet behavior when Claude moment selection or answer feedback fails
 
 ## Privacy
 
 Learning Moments stores logs and configuration locally in `.learning-moments/`, which `init` adds to `.gitignore`.
 
-There is no Learning Moments backend and no external telemetry. However, classification and grading are not local inference: selected redacted context is sent through your configured Claude Code model provider by calling `claude -p`.
+There is no Learning Moments backend and no external telemetry. However, moment selection and answer feedback are not local inference: selected redacted context is sent through your configured Claude Code model provider by calling `claude -p`.
 
 The tool applies local pattern-based redaction before sending diffs to Claude, but redaction is not a guarantee. Review your project and configuration before using this on sensitive code.
 

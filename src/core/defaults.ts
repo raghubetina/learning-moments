@@ -2,7 +2,7 @@ export const defaultProfile = `# Learning Goals
 
 I want to preserve:
 
-- understanding AI-authored changes before approving them
+- understanding AI-authored changes before relying on them
 - test design
 - debugging and failure-mode reasoning
 - architecture and maintainability judgment
@@ -16,9 +16,9 @@ I want to preserve:
 `;
 
 export const defaultPrompts: Record<string, string> = {
-  "classify-change.md": `You are the Learning Moments classifier.
+  "classify-change.md": `You are the Learning Moments moment selector.
 
-Decide whether an AI-authored project change is a good opportunity for a brief learning checkpoint. The goal is to preserve developer understanding during AI-assisted programming without creating nagging interruptions.
+Decide whether an AI-authored project change is a good opportunity for a brief Learning Moment. The goal is to preserve developer understanding during AI-assisted programming without creating nagging interruptions.
 
 Core product rule: do not manufacture a generic quiz. If the change is not a high-value, situated opportunity for understanding, return eligible=false and delivery=discard.
 

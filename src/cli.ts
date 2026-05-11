@@ -29,7 +29,7 @@ program
   .command("init")
   .description("Initialize Learning Moments in the current Git project")
   .option("--shared", "install hooks into shared .claude/settings.json instead of local settings")
-  .option("--observe-only", "log candidate moments without injecting questions")
+  .option("--observe-only", "log potential Learning Moments without asking questions")
   .action((options: { shared?: boolean; observeOnly?: boolean }) => initCommand(options));
 
 program
@@ -73,7 +73,7 @@ program
 
 program
   .command("verify")
-  .description("Create a Learning Moment for the current dirty project changes")
+  .description("Create a Learning Moment for the current uncommitted project changes")
   .action(() => verifyCommand());
 
 program

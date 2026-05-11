@@ -11,7 +11,7 @@ export async function verifyCommand(): Promise<void> {
   const config = await loadConfig(projectRoot);
   const files = candidateFiles(dirtyFiles(projectRoot), config).slice(0, config.context_limits.max_paths);
   if (files.length === 0) {
-    console.log("No meaningful dirty project changes found.");
+    console.log("No meaningful uncommitted project changes found.");
     return;
   }
 
@@ -19,7 +19,7 @@ export async function verifyCommand(): Promise<void> {
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
   const classification = result?.classification;
   if (!classification || !classification.eligible || classification.delivery === "discard") {
-    console.log("No high-value Learning Moment found for the current dirty changes.");
+    console.log("No high-value Learning Moment found in the current uncommitted changes.");
     return;
   }
   const momentId = createId("moment");
