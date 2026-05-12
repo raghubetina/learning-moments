@@ -440,6 +440,31 @@ describe("git-native hashing and workspace context", () => {
     expect(gitHashObjects(root, [])).toEqual({});
   });
 
+  it("gitHashObjects uses a (size, mtime) metadata fingerprint for files over 1 MB", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    const big = path.join(root, "big.bin");
+    // 2 MB — comfortably over MAX_HASH_BYTES (1 MB).
+    await fs.writeFile(big, Buffer.alloc(2 * 1024 * 1024, 0x41));
+    const out = gitHashObjects(root, ["big.bin"]);
+    expect(out["big.bin"]).toMatch(/^meta:\d+:\d+$/);
+    expect(out["big.bin"]).not.toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("gitHashObjects's metadata fingerprint changes when a large file is rewritten", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    const big = path.join(root, "big.bin");
+    await fs.writeFile(big, Buffer.alloc(2 * 1024 * 1024, 0x41));
+    const before = gitHashObjects(root, ["big.bin"])["big.bin"];
+    // sleep 10ms so the mtime is guaranteed to advance even on a filesystem
+    // with coarse mtime resolution.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await fs.writeFile(big, Buffer.alloc(2 * 1024 * 1024, 0x42));
+    const after = gitHashObjects(root, ["big.bin"])["big.bin"];
+    expect(after).not.toBe(before);
+  });
+
   it("workspaceContext with config filters out ignored paths before hashing", async () => {
     const root = await tempDir();
     git(["init", "-b", "main"], root);

@@ -4,6 +4,11 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Changed
+
+- `PostToolBatch` no longer holds the `moment-claim` lock across the classifier call. Phase 1 acquires the lock briefly to read control events, check dedupe by fingerprint, and write `classifier_called` (the claim row). The lock is released before `classifyCandidate` runs. Phase 2 reacquires the lock around `moment_created` + budget read + `moment_injected` / `moment_silenced` so the inject/silence decision is still atomic against other in-flight injections. The previous single-lock structure could make a concurrent hook fail-open just because one Claude model call was in flight (default 45s classifier timeout vs. 5s lock acquisition timeout); the slow path now serializes only on the fingerprint dedupe, not on the model call.
+- `gitHashObjects` no longer sends files over 1 MB to `git hash-object`. Large files now use a `meta:<size>:<mtimeMs>` fingerprint instead of a git blob SHA-1, which `changedSinceBaseline` reads as a normal string comparison. `git hash-object` would otherwise read the whole file even though we never look at its contents — a stray large untracked file that escaped `config.ignore` would pay the full read cost on every hook fire.
+
 ## [0.5.0] - 2026-05-12
 
 Substantial internal restructuring. Two themes:

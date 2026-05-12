@@ -79,10 +79,17 @@ export async function postToolBatchHook(input) {
     return null;
   }
 
-  return withProjectLock(projectRoot, "moment-claim", async () => {
+  // Phase 1 — claim the fingerprint under a brief lock so concurrent hooks
+  // can't both pass dedupe and call the classifier twice for the same
+  // change. We deliberately do NOT hold the lock across the classifier
+  // call (default 45s timeout vs. 5s lock acquisition timeout); a slow
+  // model call shouldn't make a second hook fail-open just because one
+  // request is in flight.
+  const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+  const fingerprint = candidateFingerprint(files, diff.text);
+
+  const claim = await withProjectLock(projectRoot, "moment-claim", async () => {
     const lockedControl = await readControl(projectRoot);
-    const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
-    const fingerprint = candidateFingerprint(files, diff.text);
     const alreadySeen = lockedControl.some(
       (event) =>
         event.session_id === parsed.session_id &&
@@ -100,8 +107,7 @@ export async function postToolBatchHook(input) {
         candidate_fingerprint: fingerprint,
         redaction_findings: diff.findings
       });
-      await complete("candidate_already_seen", { candidate_fingerprint: fingerprint });
-      return null;
+      return { status: "already_seen" };
     }
 
     await appendEvent(projectRoot, {
@@ -112,64 +118,78 @@ export async function postToolBatchHook(input) {
       files,
       candidate_fingerprint: fingerprint
     });
+    return { status: "claimed" };
+  });
 
-    const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
-    if (!result) {
-      await appendEvent(projectRoot, {
-        type: "classifier_failed_open",
-        session_id: parsed.session_id,
-        transcript_path: parsed.transcript_path,
-        cwd: parsed.cwd,
-        files,
-        candidate_fingerprint: fingerprint,
-        redaction_findings: diff.findings
-      });
-      await complete("classifier_failed_open", { candidate_fingerprint: fingerprint });
-      return null;
-    }
+  if (claim.status === "already_seen") {
+    await complete("candidate_already_seen", { candidate_fingerprint: fingerprint });
+    return null;
+  }
 
+  // Slow path — runs OUTSIDE the moment-claim lock so parallel hooks with
+  // distinct fingerprints don't serialize on each other's model calls.
+  const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+  if (!result) {
     await appendEvent(projectRoot, {
-      type: "classifier_completed",
+      type: "classifier_failed_open",
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd,
       files,
-      candidate_fingerprint: fingerprint,
-      metrics: result.metrics
-    });
-
-    const classification = result.classification;
-    if (!classification.eligible || classification.delivery === "discard") {
-      await appendEvent(projectRoot, {
-        type: "classifier_declined",
-        session_id: parsed.session_id,
-        transcript_path: parsed.transcript_path,
-        cwd: parsed.cwd,
-        files,
-        candidate_fingerprint: fingerprint,
-        reason: classification.reason,
-        redaction_findings: diff.findings
-      });
-      await complete("classifier_declined", { candidate_fingerprint: fingerprint });
-      return null;
-    }
-
-    const momentId = createId("moment");
-    const displayId = shortId(momentId);
-    const baseEvent = {
-      moment_id: momentId,
-      short_id: displayId,
-      session_id: parsed.session_id,
-      transcript_path: parsed.transcript_path,
-      cwd: parsed.cwd,
-      files,
-      question: classification.question,
-      expected_answer_outline: classification.expected_answer_outline,
-      classifier_reason: classification.reason,
       candidate_fingerprint: fingerprint,
       redaction_findings: diff.findings
-    };
+    });
+    await complete("classifier_failed_open", { candidate_fingerprint: fingerprint });
+    return null;
+  }
 
+  await appendEvent(projectRoot, {
+    type: "classifier_completed",
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    files,
+    candidate_fingerprint: fingerprint,
+    metrics: result.metrics
+  });
+
+  const classification = result.classification;
+  if (!classification.eligible || classification.delivery === "discard") {
+    await appendEvent(projectRoot, {
+      type: "classifier_declined",
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      files,
+      candidate_fingerprint: fingerprint,
+      reason: classification.reason,
+      redaction_findings: diff.findings
+    });
+    await complete("classifier_declined", { candidate_fingerprint: fingerprint });
+    return null;
+  }
+
+  // Phase 2 — re-acquire the lock to do the budget check + injection
+  // decision atomically. Between phase 1 and here another hook may have
+  // injected a moment of its own; the budget read inside the lock is what
+  // makes the inject/silence call coherent.
+  const momentId = createId("moment");
+  const displayId = shortId(momentId);
+  const baseEvent = {
+    moment_id: momentId,
+    short_id: displayId,
+    session_id: parsed.session_id,
+    transcript_path: parsed.transcript_path,
+    cwd: parsed.cwd,
+    files,
+    question: classification.question,
+    expected_answer_outline: classification.expected_answer_outline,
+    classifier_reason: classification.reason,
+    candidate_fingerprint: fingerprint,
+    redaction_findings: diff.findings
+  };
+
+  const injection = await withProjectLock(projectRoot, "moment-claim", async () => {
     await appendEvent(projectRoot, {
       type: "moment_created",
       ...baseEvent,
@@ -195,30 +215,35 @@ export async function postToolBatchHook(input) {
         ...baseEvent,
         reason
       });
-      await complete("moment_silenced", { candidate_fingerprint: fingerprint });
-      return null;
+      return { status: "silenced" };
     }
 
     await appendEvent(projectRoot, {
       type: "moment_injected",
       ...baseEvent
     });
-    await complete("moment_injected", { candidate_fingerprint: fingerprint });
-
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PostToolBatch",
-        additionalContext: [
-          "Learning Moments found a question for the user.",
-          "",
-          "Ask the user this question before explaining the change further:",
-          "",
-          `Learning Moment \`${displayId}\``,
-          classification.question,
-          "",
-          "Wait for the user's answer before giving any explanation. Include the Learning Moment ID in the question."
-        ].join("\n")
-      }
-    };
+    return { status: "injected" };
   });
+
+  if (injection.status === "silenced") {
+    await complete("moment_silenced", { candidate_fingerprint: fingerprint });
+    return null;
+  }
+
+  await complete("moment_injected", { candidate_fingerprint: fingerprint });
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PostToolBatch",
+      additionalContext: [
+        "Learning Moments found a question for the user.",
+        "",
+        "Ask the user this question before explaining the change further:",
+        "",
+        `Learning Moment \`${displayId}\``,
+        classification.question,
+        "",
+        "Wait for the user's answer before giving any explanation. Include the Learning Moment ID in the question."
+      ].join("\n")
+    }
+  };
 }

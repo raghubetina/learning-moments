@@ -5,12 +5,18 @@ import { candidateFiles } from "./filter.js";
 
 // Read budget for context excerpts. contextForFiles reads file content
 // directly to embed in classifier prompts; we cap that work so a stray
-// 100MB log doesn't blow up a single hook. Hashing no longer happens in
-// our process (we delegate to `git hash-object`), so it doesn't need a
-// matching guard. The NUL-byte probe is the same trick lefthook uses to
-// short-circuit binary content before decoding as UTF-8.
+// 100MB log doesn't blow up a single hook. The NUL-byte probe is the
+// same trick lefthook uses to short-circuit binary content before
+// decoding as UTF-8.
 const MAX_CONTEXT_FILE_BYTES = 1024 * 1024;
 const BINARY_PROBE_BYTES = 8192;
+// Files larger than this skip `git hash-object` entirely and use a
+// (size, mtime) metadata fingerprint instead. `git hash-object` still has
+// to read the whole file even though we never look at its contents — a
+// 100 MB untracked file that escapes config.ignore would otherwise pay
+// the full read cost on every hook fire. The fingerprint is stable
+// enough that `changedSinceBaseline` still detects edits via stat alone.
+const MAX_HASH_BYTES = 1024 * 1024;
 
 /**
  * @param {Buffer} buf
@@ -92,9 +98,13 @@ export function dirtyFiles(cwd = process.cwd()) {
 
 /**
  * Hash a batch of working-tree paths via `git hash-object --stdin-paths`.
- * Returns a path → blob hash map. Paths that don't exist on disk (e.g. a
- * deletion still appearing in `git status`) get a `null` entry so
- * baseline comparison can detect their absence as a change.
+ * Returns a path → fingerprint map. Three fingerprint shapes:
+ *   - a 40-char git blob SHA-1 for files <= MAX_HASH_BYTES,
+ *   - a `meta:<size>:<mtimeMs>` string for files over the size cap (skips
+ *     the read, which `git hash-object` would otherwise perform in full),
+ *   - `null` for paths that don't exist on disk (e.g. a deletion still
+ *     appearing in `git status`) — `changedSinceBaseline` reads the null
+ *     as "absent" and detects the change.
  *
  * Two reasons for delegating to git rather than reading + SHA-256-ing in
  * Node:
@@ -116,14 +126,18 @@ export function gitHashObjects(root, files) {
   for (const file of files) {
     try {
       const stat = fs.statSync(path.join(root, file));
-      if (stat.isFile()) {
-        present.push(file);
+      if (!stat.isFile()) {
+        out[file] = null;
         continue;
       }
+      if (stat.size > MAX_HASH_BYTES) {
+        out[file] = `meta:${stat.size}:${Math.floor(stat.mtimeMs)}`;
+        continue;
+      }
+      present.push(file);
     } catch {
-      // not present — fall through to null entry below
+      out[file] = null;
     }
-    out[file] = null;
   }
   if (present.length === 0) return out;
 
