@@ -13,6 +13,8 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 ### Changed
 
 - Hot-path readers switched from the merged `readEvents` to per-class helpers (`readLedger`, `readControl`, `readTelemetry`). `PostToolBatch` now reads only the control file for budget + dedupe and only the ledger for session baseline + immediate-prompt budget; `UserPromptSubmit` and `Stop` read only the ledger. Pre-migration the helpers fall back to filtering the unified log so behavior is unchanged; post-migration each hook touches one small file instead of the merged view. `readEvents` remains for `status` and `metrics`, which need the merged set.
+- `learning-moments delete-data` accepts `--logs-only`, which truncates `moments.jsonl` (telemetry) while leaving `ledger.jsonl` and `control.jsonl` intact. Refuses to run before migration since pre-migration `moments.jsonl` is the unified log and would take ledger rows with it. Cost reporting in `metrics` is unaffected because `classifier_completed` / `grader_completed` carry the cost numbers and live in the ledger.
+- `SessionStart` now compacts `control.jsonl` on every fire, dropping entries older than the trailing-1h window that the classifier budget and dedupe checks use. Best-effort: any failure here is swallowed so it can't block a session from starting.
 
 ## [0.4.0] - 2026-05-12
 

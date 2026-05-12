@@ -38,7 +38,7 @@ Commands:
   override <moment-id> --grade <0-3> [--note <text>]
                                       Record a manual grade override
   uninstall                           Remove hooks and slash commands (keep data)
-  delete-data                         Delete local .learning-moments data
+  delete-data [--logs-only]           Delete .learning-moments (or only truncate telemetry)
   audit [--json]                      Print install mode, hook paths, and file hashes
   hook <event>                        Internal: Claude Code hook entrypoint
 
@@ -125,8 +125,11 @@ const dispatch = {
     await overrideCommand(momentId, { grade: values.grade, note: values.note });
   },
 
-  async "delete-data"() {
-    await deleteDataCommand();
+  async "delete-data"(args) {
+    const { values } = parse(args, {
+      "logs-only": { type: "boolean" }
+    });
+    await deleteDataCommand({ logsOnly: values["logs-only"] });
   },
 
   async audit(args) {

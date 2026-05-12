@@ -1,7 +1,56 @@
+import fs from "node:fs/promises";
 import { loadConfig } from "../../core/config.js";
 import { findGitRoot, snapshot } from "../../core/git.js";
 import { parseCommonHookInput } from "../../core/hook-input.js";
-import { appendEvent } from "../../core/log.js";
+import { appendEvent, parseEvent } from "../../core/log.js";
+import { controlPath, migrationCompletePath } from "../../core/paths.js";
+
+const CONTROL_RETENTION_MS = 60 * 60 * 1000;
+
+/**
+ * Drop rows from `control.jsonl` older than the trailing-1h window that
+ * `classifierBudgetAvailable` and the PostToolBatch dedupe check use.
+ * Best-effort: a failure here must never block a session from starting.
+ *
+ * @param {string} projectRoot
+ */
+async function pruneControlLog(projectRoot) {
+  try {
+    await fs.access(migrationCompletePath(projectRoot));
+  } catch {
+    return;
+  }
+  const target = controlPath(projectRoot);
+  let raw;
+  try {
+    raw = await fs.readFile(target, "utf8");
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
+    if (code === "ENOENT") return;
+    throw error;
+  }
+  const cutoff = Date.now() - CONTROL_RETENTION_MS;
+  const kept = [];
+  for (const [index, line] of raw.split("\n").entries()) {
+    if (line.trim().length === 0) continue;
+    let event;
+    try {
+      event = parseEvent(JSON.parse(line), `control[${index}]`);
+    } catch {
+      // Malformed line: keep it so the user notices, but it won't be
+      // referenced by hot paths anyway.
+      kept.push(line);
+      continue;
+    }
+    const ts = new Date(event.timestamp).getTime();
+    if (Number.isFinite(ts) && ts >= cutoff) {
+      kept.push(line);
+    }
+  }
+  const staging = `${target}.staging`;
+  await fs.writeFile(staging, kept.length > 0 ? `${kept.join("\n")}\n` : "");
+  await fs.rename(staging, target);
+}
 
 export async function sessionStartHook(input) {
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
@@ -41,5 +90,12 @@ export async function sessionStartHook(input) {
     cwd: parsed.cwd,
     snapshot: snap
   });
+  // Best-effort pruning of the control log. We deliberately swallow errors:
+  // a failure to compact control.jsonl must not interrupt session start.
+  try {
+    await pruneControlLog(projectRoot);
+  } catch {
+    // ignored — next session-start will retry
+  }
   await complete("session_baseline_created");
 }
