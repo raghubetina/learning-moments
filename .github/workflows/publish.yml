@@ -21,19 +21,18 @@ jobs:
       - name: Checkout the tagged commit
         uses: actions/checkout@v4
 
+      # Node 24 ships with npm 11+, which is required for Trusted
+      # Publishing's OIDC-for-publish-auth path. Earlier Node majors
+      # ship with npm 10, which silently falls back to token auth and
+      # fails with 404 against the registry.
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      # Trusted Publishing's OIDC-for-publish-auth path requires npm 11+.
-      # Node 22's bundled npm is sometimes 10.x in older point releases;
-      # upgrading explicitly makes the dependency obvious and avoids a
-      # silent fallback to token auth (which presents an empty placeholder
-      # token and yields a 404 from the registry).
-      - name: Upgrade npm for Trusted Publishing support
-        run: npm install -g npm@latest
+      - name: Print npm version for diagnostics
+        run: npm --version
 
       - name: Install dependencies without running lifecycle scripts
         run: npm ci --ignore-scripts

@@ -4,6 +4,14 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-12
+
+0.2.2's publish workflow failed at the npm upgrade step: `npm install -g npm@latest` running under Node 22's bundled npm 10.9 corrupted itself mid-upgrade (`MODULE_NOT_FOUND: promise-retry` after the new files partially replaced the old ones — a known npm self-upgrade race).
+
+### Changed
+
+- Publish workflow bumped to Node 24, which ships with npm 11+ by default. This satisfies Trusted Publishing's npm-version requirement without an in-place npm self-upgrade. A diagnostic `npm --version` step prints the resolved version into the workflow log for future debugging.
+
 ## [0.2.2] - 2026-05-12
 
 0.2.2 is the first version of the 0.2.x line actually present on npm. 0.2.1 was tagged but never published — the publish workflow ran successfully through tests and provenance signing, but `npm publish` returned 404 because npm 10 (bundled with Node 20) does not implement Trusted Publishing's OIDC-for-publish-auth path. It silently fell back to token-based publish, found only `setup-node`'s placeholder token, and the registry rejected it.
@@ -49,7 +57,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/raghubetina/learning-moments/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raghubetina/learning-moments/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raghubetina/learning-moments/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/raghubetina/learning-moments/releases/tag/v0.2.0
