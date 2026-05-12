@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-floor:
+    name: Tests + audit on Node 20 (declared minimum)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned to the floor declared in package.json `engines`. The publish
+      # workflow uses Node 24 (required for Trusted Publishing's npm 11+
+      # OIDC path), so this is the only CI surface that exercises the
+      # minimum runtime users could be on. If we want broader matrix
+      # coverage later, add 22 and 24 here.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies without running lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npm run check
+
+      - name: Run the test suite
+        run: npm test
+
+      - name: Verify file integrity against MANIFEST.json
+        run: node src/cli.js audit
