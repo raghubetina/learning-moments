@@ -49,7 +49,9 @@ export async function postToolBatchHook(input) {
 
   // Defer the working-tree snapshot until after every early-return path so
   // that disabled, paused, or budget-exhausted invocations never pay its cost.
-  const current = snapshot(parsed.cwd);
+  // Pass config so candidates are filtered (via ignore.paths and
+  // ignore.extensions) before any file is opened for hashing.
+  const current = snapshot(parsed.cwd, config);
 
   const baseline = latestSessionBaseline(events, parsed.session_id) ?? {
     root: projectRoot,

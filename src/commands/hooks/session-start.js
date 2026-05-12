@@ -33,7 +33,7 @@ export async function sessionStartHook(input) {
     return;
   }
 
-  const snap = snapshot(parsed.cwd);
+  const snap = snapshot(parsed.cwd, config);
   await appendEvent(projectRoot, {
     type: "session_baseline_created",
     session_id: parsed.session_id,

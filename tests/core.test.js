@@ -4,7 +4,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
-import { changedSinceBaseline, contextForFiles, snapshot } from "../src/core/git.js";
+import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
@@ -178,6 +178,57 @@ describe("settingsArgument (no-hooks settings file)", () => {
     const root = await tempDir();
     await writeSettings(root, JSON.stringify({ hooks: {} }));
     expect(await settingsArgument(root)).toBe(INLINE);
+  });
+});
+
+describe("file content guards", () => {
+  it("fileHash returns null for files over the size cap", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    // 2 MB > the 1 MB cap. Use a Buffer of printable bytes so it's not
+    // also caught by the binary guard.
+    const oversize = Buffer.alloc(2 * 1024 * 1024, "a");
+    await fs.writeFile(path.join(root, "big.txt"), oversize);
+    expect(fileHash(root, "big.txt")).toBeNull();
+  });
+
+  it("fileHash returns null for binary files (NUL byte in probe)", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    const binary = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
+    await fs.writeFile(path.join(root, "blob.bin"), binary);
+    expect(fileHash(root, "blob.bin")).toBeNull();
+  });
+
+  it("fileHash still hashes small text files", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "hello.txt"), "hello\n");
+    expect(fileHash(root, "hello.txt")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("snapshot with config filters out ignored paths before hashing", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "tracked.txt"), "tracked\n");
+    git(["add", "tracked.txt"], root);
+    git(["commit", "-m", "initial"], root);
+
+    // Edit the tracked file and add an ignorable file.
+    await fs.writeFile(path.join(root, "tracked.txt"), "modified\n");
+    await fs.mkdir(path.join(root, "dist"), { recursive: true });
+    await fs.writeFile(path.join(root, "dist", "bundle.js"), "// build artifact\n");
+
+    const config = {
+      ignore: {
+        paths: ["dist/**"],
+        extensions: []
+      }
+    };
+    const snap = snapshot(root, config);
+    expect(snap.dirtyFiles).toContain("tracked.txt");
+    expect(snap.dirtyFiles).not.toContain("dist/bundle.js");
+    expect(snap.hashes["dist/bundle.js"]).toBeUndefined();
   });
 });
 
