@@ -4,6 +4,25 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-12
+
+Reliability and audit-story tightening across six small fixes. No breaking changes; safe drop-in upgrade from 0.3.1. Lands before the strict-parser change planned for 0.4.0 so users get the fail-open improvements in place first.
+
+### Changed
+
+- Hook event dispatch now runs inside the fail-open boundary. Previously the unknown-event check in `src/cli.js` threw before `runHook` was invoked, so a stale installed hook entry (event renamed in a later version) or a typo would exit non-zero and interrupt the user's Claude Code session. The lookup now happens inside the wrapped action; unknown events produce a logged `hook_error` and a clean exit 0.
+- `SessionStart` defers its working-tree snapshot past the disabled/paused checks, mirroring the same reorder already in place for `PostToolBatch`. Paused or disabled projects no longer pay the cost of hashing every dirty and untracked file on every session start.
+- The no-hooks settings file used to isolate nested `claude -p` calls is now validated by contents, not just existence. A corrupted or hand-edited file with `disableAllHooks: false` (or no field at all) silently re-enabled hooks in nested calls; the inline-fallback path now covers that case alongside missing-file.
+- `hook_error` events no longer include stack traces by default. Setting `LEARNING_MOMENTS_DEBUG=1` re-enables stack capture in the log and surfaces a one-line failure message on stderr for immediate visibility. Default behavior keeps the persisted record narrower and less likely to embed local paths.
+
+### Added
+
+- `.github/workflows/ci.yml` runs type-check, tests, and audit on Node 20 (the declared `engines` floor) for every push and pull request to `main`. The publish workflow continues to use Node 24 (Trusted Publishing needs npm 11+), so this is the only surface that exercises the minimum supported runtime.
+
+### Fixed
+
+- `package-lock.json` version metadata refreshed to match the current `package.json` version. The lockfile still said `0.3.0` after the previous patch bump; no transitive dep changes, only the two `"version"` fields.
+
 ## [0.3.1] - 2026-05-12
 
 ### Added
@@ -84,7 +103,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/raghubetina/learning-moments/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/raghubetina/learning-moments/compare/v0.2.2...v0.2.3
