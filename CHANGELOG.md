@@ -16,6 +16,7 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 ### Removed
 
 - Unused configuration fields removed from `config.json`: `context_limits.max_file_excerpt_chars`, `context_limits.max_transcript_excerpt_chars`, `ignore.generated_markers`, and the `confidence` object. All four were validated by `parseConfig` and persisted to disk but never read by any runtime code — editing them in `config.json` had no effect. They are deleted from `defaultConfig` and `parseConfig`; existing user configs that still contain them will fail validation. If you have a customized `config.json`, re-run `learning-moments init` or remove these keys by hand. When the features behind these knobs land (excerpt limits, generated-file detection, confidence prompts), the knobs come back alongside their implementation.
+- `config.claude.no_hooks_settings_file` removed. The path was technically configurable but the file is always written by `init` at `.learning-moments/claude-no-hooks-settings.json`; nothing else has a legitimate reason to change it. `src/core/claude.js` now resolves the path directly via `noHooksSettingsPath(projectRoot)`, the same helper `init` and `doctor` already used.
 
 ## [0.2.3] - 2026-05-12
 

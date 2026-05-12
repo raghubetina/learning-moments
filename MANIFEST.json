@@ -1,9 +1,9 @@
 {
   "name": "learning-moments",
   "version": "0.2.3",
-  "generatedAt": "2026-05-12T16:40:18.261Z",
+  "generatedAt": "2026-05-12T17:02:26.566Z",
   "files": {
-    "CHANGELOG.md": "ef3adb2a72e48aacd457504dff5e458173f44353c4c7df597c63c1429cdeb798",
+    "CHANGELOG.md": "b31f0dfb7546573b21daf4ffbd1dc469439296d05bdeb64979390f44e01e0818",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "e2e9a02ecacc1f426ec1dc5cd8f39fa2b88d1ac89d0a00315cdf55d2494bb73d",
     "package.json": "b2ca48e8a97dd734dc9dbdbe8819a4bdb6059986cfb2afc16ae6cda53016dedb",
@@ -28,8 +28,8 @@
     "src/core/budget.js": "e0eb1605fe5195d2d37d04a08e467145851166a6ffb02958c107ddd1e9c13f9b",
     "src/core/classifier.js": "e12f2e7f6ee7c3865603ca3224d48e28d2cda33c5cd1b6a0b0b65d068fb47953",
     "src/core/claude-settings.js": "bdebfd6efcfa4626e57ab5bd07122bcfff3421d1983187e00ce023936f9a8b8e",
-    "src/core/claude.js": "aa7edcfb14b941e9c0e0433cb55a15d2d86dd5cd31d6bd67f0bd1d01a2d8e3b0",
-    "src/core/config.js": "d6883988f2f4c361ef0871d21e7ece5af8f8595e7ae16bcb8feaa857a94a5321",
+    "src/core/claude.js": "8cd55b41ae08403516fcedc90ce5ca98e4233ee16067cfbc06222debf779a9aa",
+    "src/core/config.js": "1ebc30b4e114f992de90a4c8de245a9434b7aeda6d941f929b2eaa9daaa8f281",
     "src/core/defaults.js": "26bf67fe6aa4bfdc91d1182aefce3661e4295f8ae1877fe6863b28451867810e",
     "src/core/file-utils.js": "78599c8ca19bf40b47a852436ead4192fd126c9f6270eea5fdabe5bba84a0c8a",
     "src/core/filter.js": "064605314e6832928b4a33b2b808737b55b0a29a6cf315cd46ff06dea631f777",

@@ -114,7 +114,6 @@ export function parseConfig(raw, loc = "config") {
         1,
         `${loc}.claude.grader_timeout_seconds`
       ),
-      no_hooks_settings_file: assertString(claude.no_hooks_settings_file, `${loc}.claude.no_hooks_settings_file`),
       use_bare_when_compatible: assertBoolean(
         claude.use_bare_when_compatible,
         `${loc}.claude.use_bare_when_compatible`
@@ -153,7 +152,6 @@ export const defaultConfig = {
     grading_model: "opus",
     classifier_timeout_seconds: 45,
     grader_timeout_seconds: 45,
-    no_hooks_settings_file: ".learning-moments/claude-no-hooks-settings.json",
     use_bare_when_compatible: false
   }
 };

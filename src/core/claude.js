@@ -1,13 +1,16 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import path from "node:path";
 import { promisify } from "node:util";
+import { noHooksSettingsPath } from "./paths.js";
 
 const execFileAsync = promisify(execFile);
 
-async function settingsArgument(projectRoot, config) {
-  const configured = config.claude.no_hooks_settings_file;
-  const candidate = path.isAbsolute(configured) ? configured : path.join(projectRoot, configured);
+// The no-hooks settings file is written by `learning-moments init` at a
+// fixed path inside the project's `.learning-moments/` directory. If it's
+// somehow missing at runtime, fall back to passing the settings JSON inline
+// rather than failing the nested call.
+async function settingsArgument(projectRoot) {
+  const candidate = noHooksSettingsPath(projectRoot);
   try {
     await fs.access(candidate);
     return candidate;
@@ -117,7 +120,7 @@ export async function runClaudeStructured(request) {
     "json",
     "--no-session-persistence",
     "--settings",
-    await settingsArgument(request.projectRoot, request.config),
+    await settingsArgument(request.projectRoot),
     "--setting-sources",
     "user",
     "--disable-slash-commands",
