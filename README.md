@@ -73,6 +73,21 @@ learning-moments doctor
 
 `init` is safe to rerun. It updates missing hook and slash command files without deleting your local Learning Moments data.
 
+## Verifying the install
+
+Each release is built and published from GitHub Actions and includes a [npm provenance attestation](https://docs.npmjs.com/generating-provenance-statements) cryptographically tying the tarball to a specific commit in this repository. There is no long-lived npm token; publishing uses npm Trusted Publishing via OIDC.
+
+After installing, you can verify both layers of the trust chain:
+
+```bash
+npm audit signatures      # attestation: this tarball was built from the public repo
+learning-moments audit    # local integrity: file hashes match MANIFEST.json
+```
+
+`npm audit signatures` checks the registry's signed attestation that the tarball was built by GitHub Actions from a specific commit of `raghubetina/learning-moments`. `learning-moments audit` then verifies that every shipped source file on disk matches the SHA-256 in `MANIFEST.json` that travelled with that tarball. Together they cover the chain from `git tag → CI build → registry → installed files`.
+
+If you want to skip the registry entirely, [install from a git checkout](#development) instead — `learning-moments audit` will then show install mode `git-checkout`.
+
 ## Commands
 
 ```bash
@@ -88,7 +103,7 @@ learning-moments uninstall
 learning-moments delete-data
 ```
 
-`audit` prints the install mode, the absolute paths of the CLI and Claude Code hook entries, runtime dependencies, lifecycle scripts, and SHA-256 hashes of every shipped file (verified against `MANIFEST.json` when present). Use `learning-moments audit --json` for a machine-readable report.
+`audit` prints the install mode, the absolute paths of the CLI and Claude Code hook entries, runtime dependencies, lifecycle scripts, and SHA-256 hashes of every shipped file, verified against `MANIFEST.json`. Audit exits non-zero if `MANIFEST.json` is missing, unparseable, or disagrees with any file on disk in either direction. Use `learning-moments audit --json` for a machine-readable report.
 
 `uninstall` removes hooks and slash commands but keeps `.learning-moments/`.
 

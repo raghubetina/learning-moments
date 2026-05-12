@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Required for npm Trusted Publishing OIDC exchange. The publish job
+# exchanges this token with the npm registry for a short-lived publish
+# credential; no long-lived NPM_TOKEN is stored in the repo.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, verify, and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies without running lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Run the test suite
+        run: npm test
+
+      # Verifies MANIFEST.json matches the shipped source files.
+      # Catches "forgot to run build-manifest before tagging" as well
+      # as any divergence between the committed manifest and the tree.
+      - name: Verify file integrity against MANIFEST.json
+        run: node src/cli.js audit
+
+      - name: Show what will be packed
+        run: npm pack --dry-run
+
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
