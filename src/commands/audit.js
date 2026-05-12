@@ -159,6 +159,11 @@ export async function auditCommand(options = {}) {
   // to keep the two sides symmetric.
   const auditedEntries = shippedEntries.filter((entry) => entry !== "MANIFEST.json");
   const files = await listFiles(root, auditedEntries);
+  // package.json ships with every npm tarball regardless of `files`, and it
+  // dictates what gets shipped and installed. Include it here so audit and
+  // build-manifest stay symmetric.
+  files.push("package.json");
+  files.sort();
   const hashes = {};
   for (const rel of files) {
     hashes[rel] = await hashFile(path.join(root, rel));

@@ -4,6 +4,10 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Changed
+
+- `MANIFEST.json` and `learning-moments audit` now hash `package.json` alongside the other shipped files. `package.json` ships with every npm tarball regardless of the `files` array and controls what gets shipped (`files`) and what gets installed (`bin`), so leaving it out of integrity verification meant the most tamper-sensitive metadata was the only thing not protected.
+
 ## [0.2.3] - 2026-05-12
 
 0.2.2's publish workflow failed at the npm upgrade step: `npm install -g npm@latest` running under Node 22's bundled npm 10.9 corrupted itself mid-upgrade (`MODULE_NOT_FOUND: promise-retry` after the new files partially replaced the old ones — a known npm self-upgrade race).

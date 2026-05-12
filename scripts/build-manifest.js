@@ -50,6 +50,13 @@ async function main() {
   const entries = (pkg.files ?? []).filter((entry) => entry !== "MANIFEST.json");
 
   const files = await listFiles(entries);
+  // package.json is always included in the npm tarball regardless of `files`,
+  // and it controls what ships (`files`) and what gets installed (`bin`).
+  // Treating it as out-of-scope for the integrity check would leave the most
+  // tamper-sensitive metadata unprotected.
+  files.push("package.json");
+  files.sort();
+
   const fileHashes = {};
   for (const rel of files) {
     fileHashes[rel] = await hashFile(path.join(ROOT, rel));
