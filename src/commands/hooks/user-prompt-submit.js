@@ -2,7 +2,7 @@ import { findGitRoot } from "../../core/git.js";
 import { loadConfig } from "../../core/config.js";
 import { gradeAnswer } from "../../core/grader.js";
 import { parseUserPromptSubmitInput } from "../../core/hook-input.js";
-import { appendEvent, readEvents } from "../../core/log.js";
+import { appendEvent, readLedger } from "../../core/log.js";
 import { redactSecrets } from "../../core/redaction.js";
 import { pendingInjectedMoment } from "../../core/state.js";
 
@@ -36,7 +36,7 @@ export async function userPromptSubmitHook(input) {
     await complete("disabled_or_paused");
     return null;
   }
-  const events = await readEvents(projectRoot);
+  const events = await readLedger(projectRoot);
   const pending = pendingInjectedMoment(events, parsed.session_id);
   if (!pending) {
     await complete("no_pending_moment");

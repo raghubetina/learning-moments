@@ -144,9 +144,9 @@ async function readJsonlFile(file, label) {
 
 /**
  * Pre-migration: read the unified `moments.jsonl`. Post-migration: read
- * all three class files and merge by timestamp. Callers that need only a
- * single class should use the per-class read helpers (added in a later
- * phase) instead of paying for the merge.
+ * all three class files and merge by timestamp. Callers that need only
+ * one retention class should use `readLedger` / `readControl` /
+ * `readTelemetry` to avoid the merge cost on the hot path.
  *
  * @param {string} projectRoot
  * @returns {Promise<EventRecord[]>}
@@ -163,4 +163,60 @@ export async function readEvents(projectRoot) {
   const merged = [...ledger, ...control, ...telemetry];
   merged.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
   return merged;
+}
+
+/**
+ * @param {string} projectRoot
+ * @param {"ledger" | "control" | "telemetry"} klass
+ * @returns {Promise<EventRecord[]>}
+ */
+async function readClass(projectRoot, klass) {
+  if (!(await isMigrated(projectRoot))) {
+    // Pre-migration: filter the unified log by class. Slower, but the only
+    // hot-path call sites that hit this branch are the dev environment
+    // before `init` runs. Production paths see a marker after first init.
+    const all = await readJsonlFile(logPath(projectRoot), "event");
+    return all.filter((event) => EVENT_CLASSES[event.type] === klass);
+  }
+  const file =
+    klass === "ledger"
+      ? ledgerPath(projectRoot)
+      : klass === "control"
+        ? controlPath(projectRoot)
+        : telemetryPath(projectRoot);
+  return readJsonlFile(file, klass);
+}
+
+/**
+ * Read only durable learning-record events. Use this on hot paths that
+ * call into `latestSessionBaseline`, `pendingInjectedMoment`,
+ * `pendingFeedbackMoment`, or `immediatePromptBudgetAvailable`.
+ *
+ * @param {string} projectRoot
+ * @returns {Promise<EventRecord[]>}
+ */
+export function readLedger(projectRoot) {
+  return readClass(projectRoot, "ledger");
+}
+
+/**
+ * Read only hot-path control events. Use this for `classifierBudgetAvailable`
+ * and the PostToolBatch dedupe check.
+ *
+ * @param {string} projectRoot
+ * @returns {Promise<EventRecord[]>}
+ */
+export function readControl(projectRoot) {
+  return readClass(projectRoot, "control");
+}
+
+/**
+ * Read only disposable telemetry. Currently only used by `metrics` for
+ * latency reporting.
+ *
+ * @param {string} projectRoot
+ * @returns {Promise<EventRecord[]>}
+ */
+export function readTelemetry(projectRoot) {
+  return readClass(projectRoot, "telemetry");
 }

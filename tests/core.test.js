@@ -11,7 +11,14 @@ import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../sr
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
-import { appendEvent, invalidateMigrationCache, readEvents } from "../src/core/log.js";
+import {
+  appendEvent,
+  invalidateMigrationCache,
+  readControl,
+  readEvents,
+  readLedger,
+  readTelemetry
+} from "../src/core/log.js";
 import {
   configPath,
   controlPath,
@@ -203,6 +210,44 @@ describe("log", () => {
     expect(events.map((e) => e.type).sort()).toEqual(
       ["classifier_called", "hook_completed", "moment_created"].sort()
     );
+  });
+});
+
+describe("per-class read helpers", () => {
+  it("pre-migration: filters the unified log by class", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    expect((await readLedger(root)).map((e) => e.type)).toEqual(["moment_created"]);
+    expect((await readControl(root)).map((e) => e.type)).toEqual(["classifier_called"]);
+    expect((await readTelemetry(root)).map((e) => e.type)).toEqual(["hook_completed"]);
+  });
+
+  it("post-migration: reads only the per-class file", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await fs.writeFile(migrationCompletePath(root), "{}");
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    expect((await readLedger(root)).map((e) => e.type)).toEqual(["moment_created"]);
+    expect((await readControl(root)).map((e) => e.type)).toEqual(["classifier_called"]);
+    expect((await readTelemetry(root)).map((e) => e.type)).toEqual(["hook_completed"]);
+
+    // Cross-check: a stray foreign event in another class file is not
+    // returned. Append a telemetry-classed event directly to the ledger
+    // file and verify readLedger surfaces it but readTelemetry does not.
+    // (We do not validate event-class consistency at read time — the
+    // registry guards the write path only.)
+    await fs.appendFile(ledgerPath(root), `${JSON.stringify({ id: "x", type: "hook_completed", timestamp: new Date().toISOString() })}\n`);
+    expect((await readLedger(root)).map((e) => e.type)).toContain("hook_completed");
+    expect((await readTelemetry(root)).map((e) => e.type)).toEqual(["hook_completed"]);
   });
 });
 

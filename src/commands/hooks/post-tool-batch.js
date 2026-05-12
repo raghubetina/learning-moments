@@ -6,7 +6,7 @@ import { candidateFiles } from "../../core/filter.js";
 import { changedSinceBaseline, contextForFiles, findGitRoot, snapshot } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
-import { appendEvent, readEvents } from "../../core/log.js";
+import { appendEvent, readControl, readLedger } from "../../core/log.js";
 import { redactSecrets } from "../../core/redaction.js";
 import { latestSessionBaseline } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
@@ -41,11 +41,12 @@ export async function postToolBatchHook(input) {
     return null;
   }
 
-  const events = await readEvents(projectRoot);
-  if (!classifierBudgetAvailable(events, config)) {
+  const controlEvents = await readControl(projectRoot);
+  if (!classifierBudgetAvailable(controlEvents, config)) {
     await complete("classifier_budget_exhausted");
     return null;
   }
+  const ledgerEvents = await readLedger(projectRoot);
 
   // Defer the working-tree snapshot until after every early-return path so
   // that disabled, paused, or budget-exhausted invocations never pay its cost.
@@ -53,7 +54,7 @@ export async function postToolBatchHook(input) {
   // ignore.extensions) before any file is opened for hashing.
   const current = snapshot(parsed.cwd, config);
 
-  const baseline = latestSessionBaseline(events, parsed.session_id) ?? {
+  const baseline = latestSessionBaseline(ledgerEvents, parsed.session_id) ?? {
     root: projectRoot,
     head: current.head,
     branch: current.branch,
@@ -82,10 +83,10 @@ export async function postToolBatchHook(input) {
   }
 
   return withProjectLock(projectRoot, "moment-claim", async () => {
-    const lockedEvents = await readEvents(projectRoot);
+    const lockedControl = await readControl(projectRoot);
     const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
     const fingerprint = candidateFingerprint(files, diff.text);
-    const alreadySeen = lockedEvents.some(
+    const alreadySeen = lockedControl.some(
       (event) =>
         event.session_id === parsed.session_id &&
         event.candidate_fingerprint === fingerprint &&
@@ -180,11 +181,12 @@ export async function postToolBatchHook(input) {
       flow_cost: classification.flow_cost
     });
 
+    const lockedLedger = await readLedger(projectRoot);
     const canInject =
       config.mode === "active" &&
       classification.delivery === "active" &&
       classification.timing === "ask_now" &&
-      immediatePromptBudgetAvailable(lockedEvents, config);
+      immediatePromptBudgetAvailable(lockedLedger, config);
 
     if (!canInject) {
       let reason;

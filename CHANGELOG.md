@@ -10,6 +10,10 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 - Path helpers `ledgerPath`, `controlPath`, `telemetryPath`, and `migrationCompletePath` for the three-class split. `appendEvent` now routes by retention class — but only after the `.migration-complete` marker is written. Until then (every repo currently in the wild), writes continue to go to the unified `moments.jsonl`, so this commit is a no-op for existing users. The marker is written by the migration step (next phase). `readEvents` merges the three class files post-migration; pre-migration it still reads the unified file.
 - One-time log migration triggered by `learning-moments init`. Reads the unified `moments.jsonl`, classifies each row via the event registry, and writes `ledger.jsonl` / `control.jsonl` plus a telemetry-only `moments.jsonl` via a staging-and-rename sequence so a crashed run leaves no partial split. Writes `.migration-complete` last, which is the boolean every reader and writer checks. Idempotent — running `init` again after migration is a no-op. The migration also cleans up `.staging` debris from a prior aborted run.
 
+### Changed
+
+- Hot-path readers switched from the merged `readEvents` to per-class helpers (`readLedger`, `readControl`, `readTelemetry`). `PostToolBatch` now reads only the control file for budget + dedupe and only the ledger for session baseline + immediate-prompt budget; `UserPromptSubmit` and `Stop` read only the ledger. Pre-migration the helpers fall back to filtering the unified log so behavior is unchanged; post-migration each hook touches one small file instead of the merged view. `readEvents` remains for `status` and `metrics`, which need the merged set.
+
 ## [0.4.0] - 2026-05-12
 
 Breaking minor release. Tightens the config validation surface (a 0.3.0 changelog claim that wasn't backed by code is now true) and stops `snapshot()` from doing repository-wide file reads on hot hook paths. Pairs with the safety nets in 0.3.2: any hook failure produced by stricter validation will now fail-open with a logged `hook_error` event.
