@@ -83,9 +83,12 @@ learning-moments metrics
 learning-moments pause --project
 learning-moments resume --project
 learning-moments verify
+learning-moments audit
 learning-moments uninstall
 learning-moments delete-data
 ```
+
+`audit` prints the install mode, the absolute paths of the CLI and Claude Code hook entries, runtime dependencies, lifecycle scripts, and SHA-256 hashes of every shipped file (verified against `MANIFEST.json` when present). Use `learning-moments audit --json` for a machine-readable report.
 
 `uninstall` removes hooks and slash commands but keeps `.learning-moments/`.
 
@@ -163,26 +166,31 @@ The tool applies local pattern-based redaction before sending changes to Claude,
 
 ## Development
 
+Learning Moments is a source-executed plain-JavaScript CLI. There is no build step: the `bin` entrypoint in `package.json` points directly at `src/cli.js`, and Claude Code hooks installed by `learning-moments init` invoke the same source file with an absolute path. No `dist/`, no bundling, no minification.
+
 ```bash
 git clone https://github.com/raghubetina/learning-moments.git
 cd learning-moments
-npm install
-npm run build
+npm ci --ignore-scripts
 npm test
+node src/cli.js --help
 ```
+
+`--ignore-scripts` is recommended for audit-oriented workflows; the project itself defines no lifecycle scripts.
 
 Run locally from this repo:
 
 ```bash
-npm run dev -- init
-npm run dev -- status
-npm run dev -- doctor
+node src/cli.js init
+node src/cli.js status
+node src/cli.js doctor
+node src/cli.js audit
 ```
 
-After building, the CLI entrypoint is:
+To regenerate the shipped `MANIFEST.json` (SHA-256 baseline used by `learning-moments audit`):
 
 ```bash
-node dist/cli.js --help
+npm run build-manifest
 ```
 
 ## License

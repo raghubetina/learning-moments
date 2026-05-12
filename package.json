@@ -1,26 +1,25 @@
 {
   "name": "learning-moments",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A Claude Code integration that adds brief checks of developer understanding to AI-assisted programming.",
   "type": "module",
-  "main": "dist/cli.js",
   "bin": {
-    "learning-moments": "dist/cli.js"
+    "learning-moments": "src/cli.js"
   },
   "engines": {
     "node": ">=20"
   },
   "files": [
-    "dist",
+    "src/",
+    "MANIFEST.json",
     "README.md",
     "LICENSE.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "dev": "tsx src/cli.ts",
-    "prepublishOnly": "npm run build && npm test"
+    "audit": "node src/cli.js audit",
+    "build-manifest": "node scripts/build-manifest.js",
+    "release": "node scripts/build-manifest.js && vitest run && npm pack --dry-run"
   },
   "keywords": [
     "claude-code",
@@ -40,15 +39,7 @@
     "url": "https://github.com/raghubetina/learning-moments/issues"
   },
   "homepage": "https://github.com/raghubetina/learning-moments#readme",
-  "dependencies": {
-    "commander": "^14.0.3",
-    "minimatch": "^10.2.5",
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
-    "@types/node": "^25.6.2",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   }
 }
