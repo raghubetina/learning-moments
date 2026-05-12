@@ -3,6 +3,7 @@ import { loadConfig } from "../../core/config.js";
 import { gradeAnswer } from "../../core/grader.js";
 import { parseUserPromptSubmitInput } from "../../core/hook-input.js";
 import { appendEvent, readEvents } from "../../core/log.js";
+import { redactSecrets } from "../../core/redaction.js";
 import { pendingInjectedMoment } from "../../core/state.js";
 
 function isSkip(prompt) {
@@ -42,7 +43,15 @@ export async function userPromptSubmitHook(input) {
     return null;
   }
 
-  if (isSkip(parsed.prompt)) {
+  // Pattern-redact the user's answer once. The redacted text is what
+  // gets persisted and what travels to the grader; the raw prompt
+  // never leaves this scope. Skip-keyword detection runs on the
+  // redacted text too — the patterns ("skip", "not now", ...) don't
+  // overlap with anything redactSecrets matches, so the leading
+  // word is preserved.
+  const redactedAnswer = redactSecrets(parsed.prompt);
+
+  if (isSkip(redactedAnswer.text)) {
     await appendEvent(projectRoot, {
       type: "skip_recorded",
       moment_id: pending.id,
@@ -50,7 +59,8 @@ export async function userPromptSubmitHook(input) {
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd,
-      reason: parsed.prompt
+      reason: redactedAnswer.text,
+      redaction_findings: redactedAnswer.findings
     });
     await complete("skip_recorded", { moment_id: pending.id, short_id: pending.short_id });
     return null;
@@ -63,14 +73,15 @@ export async function userPromptSubmitHook(input) {
     session_id: parsed.session_id,
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
-    answer_text: parsed.prompt,
+    answer_text: redactedAnswer.text,
+    redaction_findings: redactedAnswer.findings,
     source: "UserPromptSubmit"
   });
 
   const gradeResult = await gradeAnswer(projectRoot, config, {
     question: pending.question,
     expectedAnswerOutline: pending.expected_answer_outline,
-    answer: parsed.prompt,
+    answer: redactedAnswer.text,
     files: pending.files
   });
 

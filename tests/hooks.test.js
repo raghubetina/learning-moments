@@ -373,6 +373,69 @@ describe("hook flow", () => {
     expect(typeof errorEvent.duration_ms).toBe("number");
   });
 
+  it("redacts secrets in user answers before logging or grading", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({
+        output: {
+          eligible: true,
+          timing: "ask_now",
+          delivery: "active",
+          moment_type: "predict",
+          learning_value: 3,
+          flow_cost: 1,
+          question: "What changed?",
+          expected_answer_outline: "The README.",
+          reason: "Useful.",
+          recall: { schedule: false, prompt_seed: "", delay: "next_session" },
+          storage: { summary: "x", tags: [] }
+        },
+        metrics: testMetrics
+      })
+      .mockResolvedValueOnce({
+        output: {
+          grade: 2,
+          label: "partially_correct",
+          feedback: "ok",
+          reason: "Partial.",
+          confidence: 0.8
+        },
+        metrics: testMetrics
+      });
+
+    const common = {
+      session_id: "session-redact",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({ ...common, hook_event_name: "SessionStart", source: "startup" });
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook({ ...common, hook_event_name: "PostToolBatch", tool_calls: [] });
+
+    const FAKE_KEY = "sk-ant-abc1234567890abcdefghi";
+    await userPromptSubmitHook({
+      ...common,
+      hook_event_name: "UserPromptSubmit",
+      prompt: `I added my key ${FAKE_KEY} to the README`
+    });
+
+    const events = await readEvents(root);
+    const answer = events.find((event) => event.type === "answer_received");
+    expect(answer).toBeTruthy();
+    expect(answer.answer_text).not.toContain(FAKE_KEY);
+    expect(answer.answer_text).toContain("[REDACTED_ANTHROPIC_KEY");
+    expect(Array.isArray(answer.redaction_findings)).toBe(true);
+    expect(answer.redaction_findings[0]?.type).toBe("ANTHROPIC_KEY");
+
+    const graderCall = vi.mocked(runClaudeStructured).mock.calls[1];
+    expect(graderCall[0].prompt).not.toContain(FAKE_KEY);
+    expect(graderCall[0].prompt).toContain("[REDACTED_ANTHROPIC_KEY");
+  });
+
   it("logs visible feedback observation separately from question observation", async () => {
     const root = await tempGitRepo();
     process.chdir(root);

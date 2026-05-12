@@ -175,9 +175,9 @@ Fixed in the MVP:
 
 Learning Moments stores logs and configuration locally in `.learning-moments/`, which `init` adds to `.gitignore`.
 
-There is no Learning Moments backend and no external telemetry. However, moment selection and answer feedback are not local inference: selected redacted code context is sent through your configured Claude Code model provider by calling `claude -p`.
+There is no Learning Moments backend and no external telemetry. However, moment selection and answer feedback are not local inference: code diffs and the answers you type are sent through your configured Claude Code model provider by calling `claude -p`.
 
-The tool applies local pattern-based redaction before sending changes to Claude, but redaction is not a guarantee. Review your project and configuration before using this on sensitive code.
+The tool applies local pattern-based redaction to both code diffs *and* user answers before sending them to Claude, and the redacted text is also what gets persisted to `.learning-moments/moments.jsonl` (raw answer text never leaves the hook). Redaction is not a guarantee — review your project and the redaction patterns in `src/core/redaction.js` before using this on sensitive code.
 
 ## Development
 
