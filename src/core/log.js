@@ -16,9 +16,11 @@ import { assertObject, assertString, optional } from "./validate.js";
 const migrationCache = new Map();
 
 /**
- * Used by tests to reset the cache between runs against fresh temp dirs.
+ * Drops the per-process cache so the next call to `isMigrated` re-checks
+ * the filesystem. Used by `migrateLegacyLog` after it writes the marker,
+ * and by tests that recycle the cache across temp dirs.
  */
-export function _resetMigrationCacheForTests() {
+export function invalidateMigrationCache() {
   migrationCache.clear();
 }
 

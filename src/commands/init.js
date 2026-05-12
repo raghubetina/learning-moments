@@ -5,6 +5,7 @@ import { defaultConfig, parseConfig, writeConfig } from "../core/config.js";
 import { defaultProfile, defaultPrompts, slashCommandPrompts } from "../core/defaults.js";
 import { pathExists, writeJsonFile } from "../core/file-utils.js";
 import { findGitRoot } from "../core/git.js";
+import { migrateLegacyLog } from "../core/migrate.js";
 import { configPath, dataDir, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
 
 async function writeIfMissing(filePath, content) {
@@ -83,6 +84,7 @@ export async function initCommand(options) {
   const gitignoreChanged = await ensureGitignore(projectRoot);
   const settingsFile = await installHooks(projectRoot, Boolean(options.shared));
   const slashCommands = await installSlashCommands(projectRoot);
+  const migration = await migrateLegacyLog(projectRoot);
 
   console.log("Learning Moments initialized.");
   console.log(`Project: ${projectRoot}`);
@@ -90,4 +92,10 @@ export async function initCommand(options) {
   console.log(`Config: ${configAction}`);
   console.log(`Slash commands written: ${slashCommands}`);
   console.log(`Gitignore updated: ${gitignoreChanged ? "yes" : "no"}`);
+  if (migration.migrated) {
+    console.log(
+      `Log split: migrated ${migration.ledger + migration.control + migration.telemetry} events ` +
+        `(ledger ${migration.ledger} / control ${migration.control} / telemetry ${migration.telemetry})`
+    );
+  }
 }

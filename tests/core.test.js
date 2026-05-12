@@ -11,7 +11,7 @@ import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../sr
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
-import { _resetMigrationCacheForTests, appendEvent, readEvents } from "../src/core/log.js";
+import { appendEvent, invalidateMigrationCache, readEvents } from "../src/core/log.js";
 import {
   configPath,
   controlPath,
@@ -157,7 +157,7 @@ describe("log", () => {
   it("writes everything to moments.jsonl when no migration marker exists", async () => {
     const root = await tempDir();
     await fs.mkdir(dataDir(root), { recursive: true });
-    _resetMigrationCacheForTests();
+    invalidateMigrationCache();
     await appendEvent(root, { type: "moment_created", cwd: root });
     await appendEvent(root, { type: "classifier_called", cwd: root });
     await appendEvent(root, { type: "hook_completed", cwd: root });
@@ -171,7 +171,7 @@ describe("log", () => {
   it("routes events by class once the migration marker is present", async () => {
     const root = await tempDir();
     await fs.mkdir(dataDir(root), { recursive: true });
-    _resetMigrationCacheForTests();
+    invalidateMigrationCache();
     await fs.writeFile(migrationCompletePath(root), "{}");
 
     await appendEvent(root, { type: "moment_created", cwd: root });
@@ -192,7 +192,7 @@ describe("log", () => {
   it("readEvents merges the three class files when migrated", async () => {
     const root = await tempDir();
     await fs.mkdir(dataDir(root), { recursive: true });
-    _resetMigrationCacheForTests();
+    invalidateMigrationCache();
     await fs.writeFile(migrationCompletePath(root), "{}");
 
     await appendEvent(root, { type: "moment_created", cwd: root });
@@ -203,6 +203,91 @@ describe("log", () => {
     expect(events.map((e) => e.type).sort()).toEqual(
       ["classifier_called", "hook_completed", "moment_created"].sort()
     );
+  });
+});
+
+describe("log migration", () => {
+  it("partitions a unified moments.jsonl by retention class", async () => {
+    const { migrateLegacyLog } = await import("../src/core/migrate.js");
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+    await appendEvent(root, { type: "answer_received", cwd: root });
+
+    const result = await migrateLegacyLog(root);
+    expect(result).toMatchObject({ migrated: true, ledger: 2, control: 1, telemetry: 1 });
+
+    await expect(fs.access(migrationCompletePath(root))).resolves.toBeUndefined();
+    const ledger = (await fs.readFile(ledgerPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    const control = (await fs.readFile(controlPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    const telemetry = (await fs.readFile(telemetryPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    expect(ledger.sort()).toEqual(["answer_received", "moment_created"]);
+    expect(control).toEqual(["classifier_called"]);
+    expect(telemetry).toEqual(["hook_completed"]);
+
+    // No staging debris left behind.
+    await expect(fs.access(`${ledgerPath(root)}.staging`)).rejects.toThrow();
+    await expect(fs.access(`${controlPath(root)}.staging`)).rejects.toThrow();
+    await expect(fs.access(`${telemetryPath(root)}.staging`)).rejects.toThrow();
+  });
+
+  it("is idempotent when run twice", async () => {
+    const { migrateLegacyLog } = await import("../src/core/migrate.js");
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await appendEvent(root, { type: "moment_created", cwd: root });
+
+    const first = await migrateLegacyLog(root);
+    const second = await migrateLegacyLog(root);
+    expect(first.migrated).toBe(true);
+    expect(second.migrated).toBe(false);
+
+    const ledger = (await fs.readFile(ledgerPath(root), "utf8")).trim().split("\n");
+    expect(ledger).toHaveLength(1);
+  });
+
+  it("writes the marker even when no legacy log exists", async () => {
+    const { migrateLegacyLog } = await import("../src/core/migrate.js");
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+
+    const result = await migrateLegacyLog(root);
+    expect(result).toEqual({ migrated: true, ledger: 0, control: 0, telemetry: 0 });
+    await expect(fs.access(migrationCompletePath(root))).resolves.toBeUndefined();
+  });
+
+  it("cleans up stale staging files from a prior aborted run", async () => {
+    const { migrateLegacyLog } = await import("../src/core/migrate.js");
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await fs.writeFile(`${ledgerPath(root)}.staging`, "stale junk that should be discarded\n");
+
+    const result = await migrateLegacyLog(root);
+    expect(result.ledger).toBe(1);
+    const ledger = (await fs.readFile(ledgerPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    expect(ledger).toEqual(["moment_created"]);
+  });
+
+  it("after migration, appendEvent routes by class without an explicit marker write", async () => {
+    const { migrateLegacyLog } = await import("../src/core/migrate.js");
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    invalidateMigrationCache();
+    await migrateLegacyLog(root);
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    const ledger = (await fs.readFile(ledgerPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    const telemetry = (await fs.readFile(telemetryPath(root), "utf8")).trim().split("\n").map((l) => JSON.parse(l).type);
+    expect(ledger).toEqual(["moment_created"]);
+    expect(telemetry).toEqual(["hook_completed"]);
   });
 });
 
