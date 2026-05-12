@@ -16,6 +16,10 @@ async function tempDir() {
 
 function git(args, cwd) {
   execFileSync("git", args, { cwd, stdio: "ignore" });
+  if (args[0] === "init") {
+    execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "test"], { cwd, stdio: "ignore" });
+  }
 }
 
 describe("ids", () => {

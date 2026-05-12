@@ -17,6 +17,8 @@ let previousCwd;
 async function tempGitRepo() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-command-test-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "test"], { cwd: root, stdio: "ignore" });
   await fs.writeFile(path.join(root, "README.md"), "test\n");
   execFileSync("git", ["add", "README.md"], { cwd: root, stdio: "ignore" });
   execFileSync("git", ["commit", "-m", "initial"], { cwd: root, stdio: "ignore" });
