@@ -1,7 +1,7 @@
 {
   "name": "learning-moments",
   "version": "0.3.1",
-  "generatedAt": "2026-05-12T18:00:53.141Z",
+  "generatedAt": "2026-05-12T18:04:05.727Z",
   "files": {
     "CHANGELOG.md": "853ffe6748ec34226a53741990e755d082f22f5ccb91972f35f369e395188a72",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
@@ -13,7 +13,7 @@
     "src/commands/doctor.js": "d4407e30a0db3236d72a8b16f8354e4088604c52bb08ce1c728e83463ecac94f",
     "src/commands/hooks/post-tool-batch.js": "0c82465fa833427281d4566e3bed2079e0e5c217835ed9aadc7606cbae740f32",
     "src/commands/hooks/post-tool-use.js": "6bd429ddc6d4c6111ee6c732b5ee5e61cf9bd914f831eefe76b391ef33c26e3e",
-    "src/commands/hooks/session-start.js": "5bd3a53f0ddbba28e32b2465c35290e154a34fadadc445a866d46b25d57b0ba1",
+    "src/commands/hooks/session-start.js": "d0c10c451900c50bbe702d4cb512acd19066179468919288b9c8038bfddbcc1c",
     "src/commands/hooks/stop.js": "f7f21ce42a5c084c2d2d05dcb354e40c4f42b7cc3634ad881a9b08f7aa0c734f",
     "src/commands/hooks/user-prompt-expansion.js": "0f3fc722fba7fedc9d5a31078110bf53a643425a285692e8e7d8737d4618e8a8",
     "src/commands/hooks/user-prompt-submit.js": "51f2997e7e633a245dd2b1d1d6250d2d7a8c2c515982bf907eef15c8506f4528",

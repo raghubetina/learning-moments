@@ -264,6 +264,39 @@ describe("hook flow", () => {
     expect(events.map((event) => event.type)).not.toContain("classifier_called");
   });
 
+  it("session pause prevents SessionStart from taking a working-tree snapshot", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const config = await loadConfig(root);
+    config.paused.sessions["paused-session"] = true;
+    await writeConfig(root, config);
+
+    const common = {
+      session_id: "paused-session",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({
+      ...common,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+
+    const events = await readEvents(root);
+    // No baseline event when paused — that's the whole point.
+    expect(events.map((event) => event.type)).not.toContain("session_baseline_created");
+    // The hook still emits hook_completed with the disabled_or_paused outcome
+    // so the pause path is observable in metrics.
+    const completed = events.find(
+      (event) => event.type === "hook_completed" && event.hook_event_name === "SessionStart"
+    );
+    expect(completed?.outcome).toBe("disabled_or_paused");
+  });
+
   it("session pause prevents PostToolBatch from calling the classifier", async () => {
     const root = await tempGitRepo();
     process.chdir(root);
