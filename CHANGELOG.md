@@ -4,6 +4,17 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-12
+
+Substantial internal restructuring. Two themes:
+
+1. **Log split** (#13): the single growing `moments.jsonl` is replaced by three retention classes — `ledger.jsonl` (durable learning history, kept forever), `control.jsonl` (hot-path state, retained 1h–24h), and `moments.jsonl` (telemetry, truncatable at any time). Every event the tool writes is classified at write time; unknown types now throw rather than silently routing. Hot hooks read only the file they need instead of merging everything. A one-time migration runs on first `init` after upgrading and is a no-op on subsequent runs.
+2. **Git-native working-tree snapshots** (#8): the eager `snapshot()` that hashed every dirty and untracked file with SHA-256 in Node is gone. Path discovery still runs eagerly (one `git status`, one ignore filter), but hashing is deferred until a baseline is materialized and is delegated to a single batched `git hash-object --stdin-paths` call. Git's own blob cache handles clean tracked files; we never open them.
+
+All log-file mutators now share one project-level write lock, so prune/truncate/migrate can't race with `appendEvent`. `dirtyFiles` was fixed to use the new path for renames (the previous code recorded the old path) and to pass `--untracked-files=all` (without it, a brand-new directory collapsed to a single `dir/` entry).
+
+No user-visible breaking changes — the on-disk JSONL format is preserved, the marker-gated migration keeps existing repos working until `init` runs, and the slash commands are unchanged.
+
 ### Added
 
 - `src/core/event-registry.js` enumerates every event type the tool writes and assigns each one a retention class (`ledger`, `control`, or `telemetry`). `appendEvent` now throws on an unknown type rather than silently writing it, so a new event introduced without a registry decision fails loudly at write time. A test scans `src/` for `type: "..."` literals and asserts every one appears in the registry, keeping the table from drifting out of sync. Foundation for the upcoming log split (#13); no on-disk format changes yet.
