@@ -137,37 +137,45 @@ const dispatch = {
   },
 
   async hook(args) {
-    const action = args[0];
-    if (!action) {
-      throw new Error("hook requires an event name");
-    }
-    const handlers = {
-      "post-tool-use": async () => {
-        await postToolUseHook(await readHookJson());
-      },
-      "post-tool-batch": async () => {
-        const output = await postToolBatchHook(await readHookJson());
-        if (output) printJson(output);
-      },
-      "user-prompt-submit": async () => {
-        const output = await userPromptSubmitHook(await readHookJson());
-        if (output) printJson(output);
-      },
-      "user-prompt-expansion": async () => {
-        await userPromptExpansionHook(await readHookJson());
-      },
-      stop: async () => {
-        await stopHook(await readHookJson());
-      },
-      "session-start": async () => {
-        await sessionStartHook(await readHookJson());
+    // Hook dispatch must stay inside the fail-open boundary. A typo or a
+    // stale installed hook entry from an older version would otherwise throw
+    // before runHook is invoked, exit non-zero, and interrupt the user's
+    // Claude Code session — exactly what runHook exists to prevent. By
+    // moving the lookup inside the wrapped action, any unknown event
+    // produces a logged hook_error and a clean exit 0.
+    const action = args[0] ?? "(missing)";
+    await runHook(action, async () => {
+      if (!args[0]) {
+        throw new Error("hook requires an event name");
       }
-    };
-    const handler = handlers[action];
-    if (!handler) {
-      throw new Error(`unknown hook event: ${action}`);
-    }
-    await runHook(action, handler);
+      const handlers = {
+        "post-tool-use": async () => {
+          await postToolUseHook(await readHookJson());
+        },
+        "post-tool-batch": async () => {
+          const output = await postToolBatchHook(await readHookJson());
+          if (output) printJson(output);
+        },
+        "user-prompt-submit": async () => {
+          const output = await userPromptSubmitHook(await readHookJson());
+          if (output) printJson(output);
+        },
+        "user-prompt-expansion": async () => {
+          await userPromptExpansionHook(await readHookJson());
+        },
+        stop: async () => {
+          await stopHook(await readHookJson());
+        },
+        "session-start": async () => {
+          await sessionStartHook(await readHookJson());
+        }
+      };
+      const handler = handlers[action];
+      if (!handler) {
+        throw new Error(`unknown hook event: ${action}`);
+      }
+      await handler();
+    });
   }
 };
 
