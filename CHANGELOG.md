@@ -4,6 +4,12 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-12
+
+This release tightens the trust story (package.json now integrity-checked, user answers now redacted before logging or grading), closes several reliability and privacy gaps surfaced by a deep audit (silent hook failures, stale locks, snapshot work on paused projects), and removes aspirational config that no runtime code read.
+
+Breaking: `parseConfig` will reject configurations that still contain the removed fields. If you have a customized `.learning-moments/config.json`, re-run `learning-moments init` or delete the removed keys by hand. See the Removed section.
+
 ### Changed
 
 - `MANIFEST.json` and `learning-moments audit` now hash `package.json` alongside the other shipped files. `package.json` ships with every npm tarball regardless of the `files` array and controls what gets shipped (`files`) and what gets installed (`bin`), so leaving it out of integrity verification meant the most tamper-sensitive metadata was the only thing not protected.
@@ -71,7 +77,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/raghubetina/learning-moments/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raghubetina/learning-moments/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raghubetina/learning-moments/compare/v0.2.0...v0.2.1
