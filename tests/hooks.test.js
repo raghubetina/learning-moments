@@ -373,6 +373,50 @@ describe("hook flow", () => {
     expect(typeof errorEvent.duration_ms).toBe("number");
   });
 
+  it("silences a moment when the classifier returns timing=ask_later", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: {
+        eligible: true,
+        timing: "ask_later",
+        delivery: "active",
+        moment_type: "predict",
+        learning_value: 3,
+        flow_cost: 1,
+        question: "Worth asking eventually but not now.",
+        expected_answer_outline: "An answer outline.",
+        reason: "Useful but not interrupt-worthy right this second.",
+        recall: { schedule: false, prompt_seed: "", delay: "next_session" },
+        storage: { summary: "x", tags: [] }
+      },
+      metrics: testMetrics
+    });
+
+    const common = {
+      session_id: "session-asklater",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({ ...common, hook_event_name: "SessionStart", source: "startup" });
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    const output = await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+
+    expect(output).toBeNull();
+    const events = await readEvents(root);
+    const silenced = events.find((event) => event.type === "moment_silenced");
+    expect(silenced).toBeTruthy();
+    expect(silenced.reason).toBe("ask_later");
+    expect(events.map((event) => event.type)).not.toContain("moment_injected");
+  });
+
   it("redacts secrets in user answers before logging or grading", async () => {
     const root = await tempGitRepo();
     process.chdir(root);

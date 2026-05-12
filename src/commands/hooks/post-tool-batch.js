@@ -181,13 +181,18 @@ export async function postToolBatchHook(input) {
     const canInject =
       config.mode === "active" &&
       classification.delivery === "active" &&
+      classification.timing === "ask_now" &&
       immediatePromptBudgetAvailable(lockedEvents, config);
 
     if (!canInject) {
+      let reason;
+      if (config.mode === "observe_only") reason = "observe_only";
+      else if (classification.timing !== "ask_now") reason = "ask_later";
+      else reason = "budget_or_delivery";
       await appendEvent(projectRoot, {
         type: "moment_silenced",
         ...baseEvent,
-        reason: config.mode === "observe_only" ? "observe_only" : "budget_or_delivery"
+        reason
       });
       await complete("moment_silenced", { candidate_fingerprint: fingerprint });
       return null;
