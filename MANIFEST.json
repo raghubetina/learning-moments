@@ -1,12 +1,12 @@
 {
   "name": "learning-moments",
-  "version": "0.3.2",
-  "generatedAt": "2026-05-12T18:19:11.581Z",
+  "version": "0.4.0",
+  "generatedAt": "2026-05-12T18:20:23.712Z",
   "files": {
-    "CHANGELOG.md": "3b0e5b1e97712641c845142934a170809f223accc20fcf08015403c14f25e18c",
+    "CHANGELOG.md": "7a7a07c502edaf3b94a28d5c74d677372040d4e74f304bf47987e90457f41777",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "e2e9a02ecacc1f426ec1dc5cd8f39fa2b88d1ac89d0a00315cdf55d2494bb73d",
-    "package.json": "6974a37e70b82384804c519e30332d65ec006f5434ff2ebb00fd7bfa4a2236d9",
+    "package.json": "bd0737dcd501424155ac0d17fed1511c229e97d24e597c5ce170e152d2b2de1f",
     "src/cli.js": "f064b8942a6817d855c8b6609d47c2a64e157a961fc60f85a201c961cf40abd7",
     "src/commands/audit.js": "78a6897346be891c54c1216bb9d73c0162440f357a9c8028c316a15556d471a3",
     "src/commands/delete-data.js": "e571e0334685c83e15fe7a19aa07f4b1a3b9021c72640178ee15e2d3eced16ef",

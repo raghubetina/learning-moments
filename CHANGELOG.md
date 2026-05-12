@@ -4,6 +4,34 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-12
+
+Breaking minor release. Tightens the config validation surface (a 0.3.0 changelog claim that wasn't backed by code is now true) and stops `snapshot()` from doing repository-wide file reads on hot hook paths. Pairs with the safety nets in 0.3.2: any hook failure produced by stricter validation will now fail-open with a logged `hook_error` event.
+
+### Changed (breaking)
+
+- `parseConfig` now rejects unknown top-level and nested keys. The 0.3.0 changelog claimed this behavior already existed — it didn't. The parser was permissive and silently dropped removed fields. It now throws `config.X: unknown key "..."` on the first offending key, naming every extra key in one pass.
+- `learning-moments init` detects an existing `.learning-moments/config.json` that fails strict parse, moves it aside to `config.json.bak`, and writes the default. Customizations must be merged back by hand from the backup. This is deliberately not an auto-migrator: the visible audit trail of what changed fits the project's posture better than silently stripping fields. A re-run of `init` against a valid config is unchanged (no `.bak` is created).
+
+Migration path for users upgrading from 0.3.x or earlier with a customized config:
+
+```bash
+npm install -g learning-moments@latest
+cd /path/to/your/project
+learning-moments init
+# Init will report which fields failed validation and back up the old config.
+# Merge any customizations from .learning-moments/config.json.bak by hand,
+# omitting the fields it complained about (typically `confidence`,
+# `generated_markers`, `max_file_excerpt_chars`, `max_transcript_excerpt_chars`,
+# `no_hooks_settings_file` — all removed in 0.3.0).
+```
+
+### Changed
+
+- `snapshot()` filters dirty files through `candidateFiles(...)` before opening any of them for hashing. Without this, `node_modules`, `dist/`, `coverage/`, lockfiles, and any other configured-ignored path was hashed on every working-tree snapshot before later being filtered out. The function now accepts an optional `config` parameter; both `PostToolBatch` and `SessionStart` pass it. Callers that omit `config` get the old behavior (used only in tests).
+- `fileHash` skips files larger than 1 MB and files whose first 8 KB contains a NUL byte. The NUL-byte probe is the same heuristic lefthook uses to short-circuit binary content before decoding. Skipped files return `null`, which compares equal to the existing missing-file return — they simply don't contribute to `changedSinceBaseline`.
+- `contextForFiles` applies the same size + binary guards to untracked files before reading them as UTF-8. This is a privacy improvement in addition to a perf one: a binary or oversize untracked file matching no ignore pattern would previously be opened and shipped to `claude -p` as text; it now isn't.
+
 ## [0.3.2] - 2026-05-12
 
 Reliability and audit-story tightening across six small fixes. No breaking changes; safe drop-in upgrade from 0.3.1. Lands before the strict-parser change planned for 0.4.0 so users get the fail-open improvements in place first.
@@ -103,7 +131,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/raghubetina/learning-moments/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/raghubetina/learning-moments/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...v0.3.0
