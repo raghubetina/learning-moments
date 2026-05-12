@@ -7,6 +7,7 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 ### Added
 
 - `src/core/event-registry.js` enumerates every event type the tool writes and assigns each one a retention class (`ledger`, `control`, or `telemetry`). `appendEvent` now throws on an unknown type rather than silently writing it, so a new event introduced without a registry decision fails loudly at write time. A test scans `src/` for `type: "..."` literals and asserts every one appears in the registry, keeping the table from drifting out of sync. Foundation for the upcoming log split (#13); no on-disk format changes yet.
+- Path helpers `ledgerPath`, `controlPath`, `telemetryPath`, and `migrationCompletePath` for the three-class split. `appendEvent` now routes by retention class — but only after the `.migration-complete` marker is written. Until then (every repo currently in the wild), writes continue to go to the unified `moments.jsonl`, so this commit is a no-op for existing users. The marker is written by the migration step (next phase). `readEvents` merges the three class files post-migration; pre-migration it still reads the unified file.
 
 ## [0.4.0] - 2026-05-12
 

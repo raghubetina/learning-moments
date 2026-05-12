@@ -11,8 +11,18 @@ import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../sr
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
-import { appendEvent, readEvents } from "../src/core/log.js";
-import { configPath, dataDir, locksDir, noHooksSettingsPath } from "../src/core/paths.js";
+import { _resetMigrationCacheForTests, appendEvent, readEvents } from "../src/core/log.js";
+import {
+  configPath,
+  controlPath,
+  dataDir,
+  ledgerPath,
+  locksDir,
+  logPath,
+  migrationCompletePath,
+  noHooksSettingsPath,
+  telemetryPath
+} from "../src/core/paths.js";
 import { redactSecrets } from "../src/core/redaction.js";
 
 async function tempDir() {
@@ -141,6 +151,57 @@ describe("log", () => {
     await fs.mkdir(dataDir(root), { recursive: true });
     await expect(appendEvent(root, { type: "not_a_real_event", cwd: root })).rejects.toThrow(
       /Unknown event type/
+    );
+  });
+
+  it("writes everything to moments.jsonl when no migration marker exists", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    _resetMigrationCacheForTests();
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    const legacy = (await fs.readFile(logPath(root), "utf8")).trim().split("\n");
+    expect(legacy).toHaveLength(3);
+    await expect(fs.access(ledgerPath(root))).rejects.toThrow();
+    await expect(fs.access(controlPath(root))).rejects.toThrow();
+  });
+
+  it("routes events by class once the migration marker is present", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    _resetMigrationCacheForTests();
+    await fs.writeFile(migrationCompletePath(root), "{}");
+
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    const ledger = (await fs.readFile(ledgerPath(root), "utf8")).trim().split("\n");
+    const control = (await fs.readFile(controlPath(root), "utf8")).trim().split("\n");
+    const telemetry = (await fs.readFile(telemetryPath(root), "utf8")).trim().split("\n");
+    expect(ledger).toHaveLength(1);
+    expect(control).toHaveLength(1);
+    expect(telemetry).toHaveLength(1);
+    expect(JSON.parse(ledger[0]).type).toBe("moment_created");
+    expect(JSON.parse(control[0]).type).toBe("classifier_called");
+    expect(JSON.parse(telemetry[0]).type).toBe("hook_completed");
+  });
+
+  it("readEvents merges the three class files when migrated", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    _resetMigrationCacheForTests();
+    await fs.writeFile(migrationCompletePath(root), "{}");
+
+    await appendEvent(root, { type: "moment_created", cwd: root });
+    await appendEvent(root, { type: "classifier_called", cwd: root });
+    await appendEvent(root, { type: "hook_completed", cwd: root });
+
+    const events = await readEvents(root);
+    expect(events.map((e) => e.type).sort()).toEqual(
+      ["classifier_called", "hook_completed", "moment_created"].sort()
     );
   });
 });

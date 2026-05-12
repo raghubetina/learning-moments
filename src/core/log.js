@@ -1,10 +1,54 @@
 // @ts-check
 import fs from "node:fs/promises";
-import { isKnownEventType } from "./event-registry.js";
+import { EVENT_CLASSES, isKnownEventType } from "./event-registry.js";
 import { createId } from "./ids.js";
-import { logPath } from "./paths.js";
+import { controlPath, ledgerPath, logPath, migrationCompletePath, telemetryPath } from "./paths.js";
 import { withProjectLock } from "./lock.js";
 import { assertObject, assertString, optional } from "./validate.js";
+
+/**
+ * Per-process cache of which projects have finished the one-time migration
+ * from `moments.jsonl` to the three-class split. Migration is only ever
+ * forward, so once we observe the marker we never need to re-check.
+ *
+ * @type {Map<string, boolean>}
+ */
+const migrationCache = new Map();
+
+/**
+ * Used by tests to reset the cache between runs against fresh temp dirs.
+ */
+export function _resetMigrationCacheForTests() {
+  migrationCache.clear();
+}
+
+/**
+ * @param {string} projectRoot
+ * @returns {Promise<boolean>}
+ */
+async function isMigrated(projectRoot) {
+  const cached = migrationCache.get(projectRoot);
+  if (cached === true) return true;
+  try {
+    await fs.access(migrationCompletePath(projectRoot));
+    migrationCache.set(projectRoot, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {string} projectRoot
+ * @param {string} eventType
+ * @returns {string}
+ */
+function destinationPath(projectRoot, eventType) {
+  const klass = EVENT_CLASSES[eventType];
+  if (klass === "ledger") return ledgerPath(projectRoot);
+  if (klass === "control") return controlPath(projectRoot);
+  return telemetryPath(projectRoot);
+}
 
 /**
  * The shape every persisted event satisfies. Individual event types add their
@@ -65,20 +109,24 @@ export async function appendEvent(projectRoot, event) {
         `Unknown event type "${normalized.type}". Add it to src/core/event-registry.js with a retention class (ledger | control | telemetry) before writing it.`
       );
     }
-    await fs.appendFile(logPath(projectRoot), `${JSON.stringify(normalized)}\n`);
+    const target = (await isMigrated(projectRoot))
+      ? destinationPath(projectRoot, normalized.type)
+      : logPath(projectRoot);
+    await fs.appendFile(target, `${JSON.stringify(normalized)}\n`);
     return normalized;
   });
 }
 
 /**
- * @param {string} projectRoot
+ * @param {string} file
+ * @param {string} label
  * @returns {Promise<EventRecord[]>}
  */
-export async function readEvents(projectRoot) {
+async function readJsonlFile(file, label) {
   /** @type {string} */
   let raw;
   try {
-    raw = await fs.readFile(logPath(projectRoot), "utf8");
+    raw = await fs.readFile(file, "utf8");
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? /** @type {{code?: string}} */ (error).code : undefined;
     if (code === "ENOENT") {
@@ -86,9 +134,31 @@ export async function readEvents(projectRoot) {
     }
     throw error;
   }
-
   return raw
     .split("\n")
     .filter((line) => line.trim().length > 0)
-    .map((line, index) => parseEvent(JSON.parse(line), `event[${index}]`));
+    .map((line, index) => parseEvent(JSON.parse(line), `${label}[${index}]`));
+}
+
+/**
+ * Pre-migration: read the unified `moments.jsonl`. Post-migration: read
+ * all three class files and merge by timestamp. Callers that need only a
+ * single class should use the per-class read helpers (added in a later
+ * phase) instead of paying for the merge.
+ *
+ * @param {string} projectRoot
+ * @returns {Promise<EventRecord[]>}
+ */
+export async function readEvents(projectRoot) {
+  if (!(await isMigrated(projectRoot))) {
+    return readJsonlFile(logPath(projectRoot), "event");
+  }
+  const [ledger, control, telemetry] = await Promise.all([
+    readJsonlFile(ledgerPath(projectRoot), "ledger"),
+    readJsonlFile(controlPath(projectRoot), "control"),
+    readJsonlFile(telemetryPath(projectRoot), "telemetry")
+  ]);
+  const merged = [...ledger, ...control, ...telemetry];
+  merged.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  return merged;
 }
