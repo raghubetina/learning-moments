@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { unsupportedGlobFeature } from "./filter.js";
 import { configPath } from "./paths.js";
 import { version as packageVersion } from "./path-self.js";
 import {
@@ -16,6 +17,20 @@ const MODES = ["active", "observe_only"];
 function parseStringArray(value, loc) {
   const arr = assertArray(value, loc);
   arr.forEach((item, i) => assertString(item, `${loc}[${i}]`));
+  return arr;
+}
+
+function parseIgnorePaths(value, loc) {
+  const arr = parseStringArray(value, loc);
+  arr.forEach((pattern, i) => {
+    const feature = unsupportedGlobFeature(pattern);
+    if (feature) {
+      throw new Error(
+        `${loc}[${i}]: pattern ${JSON.stringify(pattern)} uses ${feature}, ` +
+          "which Learning Moments does not support. Supported syntax: literal segments, '*' within a segment, and '**' across segments."
+      );
+    }
+  });
   return arr;
 }
 
@@ -93,7 +108,7 @@ export function parseConfig(raw, loc = "config") {
       max_paths: assertIntegerMin(contextLimits.max_paths, 0, `${loc}.context_limits.max_paths`)
     },
     ignore: {
-      paths: parseStringArray(ignore.paths, `${loc}.ignore.paths`),
+      paths: parseIgnorePaths(ignore.paths, `${loc}.ignore.paths`),
       extensions: parseStringArray(ignore.extensions, `${loc}.ignore.extensions`),
       generated_markers: parseStringArray(ignore.generated_markers, `${loc}.ignore.generated_markers`)
     },

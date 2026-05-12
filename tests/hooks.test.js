@@ -14,6 +14,7 @@ import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
 import { runClaudeStructured } from "../src/core/claude.js";
+import { loadConfig, writeConfig } from "../src/core/config.js";
 import { readEvents } from "../src/core/log.js";
 
 let previousCwd;
@@ -258,6 +259,92 @@ describe("hook flow", () => {
     const events = await readEvents(root);
     expect(events.filter((event) => event.type === "session_baseline_created")).toHaveLength(2);
     expect(events.map((event) => event.type)).not.toContain("classifier_called");
+  });
+
+  it("session pause prevents PostToolBatch from calling the classifier", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const config = await loadConfig(root);
+    config.paused.sessions["paused-session"] = true;
+    await writeConfig(root, config);
+
+    const common = {
+      session_id: "paused-session",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({
+      ...common,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    const output = await postToolBatchHook({
+      ...common,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+
+    expect(output).toBeNull();
+    expect(runClaudeStructured).not.toHaveBeenCalled();
+    const events = await readEvents(root);
+    expect(events.map((event) => event.type)).not.toContain("classifier_called");
+    expect(events.some((event) => event.outcome === "disabled_or_paused")).toBe(true);
+  });
+
+  it("session pause prevents UserPromptSubmit from grading a pending answer", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: {
+        eligible: true,
+        timing: "ask_now",
+        delivery: "active",
+        moment_type: "predict",
+        learning_value: 3,
+        flow_cost: 1,
+        question: "What changed?",
+        expected_answer_outline: "The README.",
+        reason: "Useful.",
+        recall: { schedule: false, prompt_seed: "", delay: "next_session" },
+        storage: { summary: "x", tags: [] }
+      },
+      metrics: testMetrics
+    });
+
+    const common = {
+      session_id: "session-1",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      permission_mode: "default"
+    };
+
+    await sessionStartHook({ ...common, hook_event_name: "SessionStart", source: "startup" });
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook({ ...common, hook_event_name: "PostToolBatch", tool_calls: [] });
+
+    const config = await loadConfig(root);
+    config.paused.sessions["session-1"] = true;
+    await writeConfig(root, config);
+
+    vi.mocked(runClaudeStructured).mockClear();
+    const answer = await userPromptSubmitHook({
+      ...common,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "The README changed."
+    });
+
+    expect(answer).toBeNull();
+    expect(runClaudeStructured).not.toHaveBeenCalled();
+    const events = await readEvents(root);
+    expect(events.map((event) => event.type)).not.toContain("grade_created");
+    expect(events.map((event) => event.type)).not.toContain("answer_received");
   });
 
   it("logs visible feedback observation separately from question observation", async () => {

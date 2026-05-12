@@ -30,6 +30,11 @@ export async function userPromptSubmitHook(input) {
   };
 
   const config = await loadConfig(projectRoot);
+  const sessionPaused = !!config.paused.sessions[parsed.session_id];
+  if (!config.enabled || config.paused.project || sessionPaused) {
+    await complete("disabled_or_paused");
+    return null;
+  }
   const events = await readEvents(projectRoot);
   const pending = pendingInjectedMoment(events, parsed.session_id);
   if (!pending) {

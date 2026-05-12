@@ -33,7 +33,8 @@ export async function postToolBatchHook(input) {
   };
 
   const config = await loadConfig(projectRoot);
-  if (!config.enabled || config.paused.project) {
+  const sessionPaused = !!config.paused.sessions[parsed.session_id];
+  if (!config.enabled || config.paused.project || sessionPaused) {
     await complete("disabled_or_paused");
     return null;
   }

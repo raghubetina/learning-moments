@@ -1,5 +1,19 @@
 import path from "node:path";
 
+const UNSUPPORTED_GLOB = [
+  { re: /[?+@!]\(/, label: "extglob (e.g. ?(...), *(...), !(...))" },
+  { re: /\{[^{}]*,[^{}]*\}/, label: "brace expansion (e.g. {a,b})" },
+  { re: /\[[^\]]+\]/, label: "character class (e.g. [a-z])" },
+  { re: /(?:^|[^*])\?/, label: "single-character wildcard '?'" }
+];
+
+export function unsupportedGlobFeature(pattern) {
+  for (const { re, label } of UNSUPPORTED_GLOB) {
+    if (re.test(pattern)) return label;
+  }
+  return null;
+}
+
 function escapeRegex(str) {
   return str.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
 }

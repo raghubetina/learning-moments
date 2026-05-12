@@ -84,6 +84,22 @@ describe("config", () => {
     };
     expect(() => parseConfig(negative)).toThrow(/grader_timeout_seconds/);
   });
+
+  it("rejects ignore.paths patterns using unsupported glob syntax", () => {
+    const cases = [
+      { pattern: "src/{a,b}/**", feature: /brace expansion/ },
+      { pattern: "src/[abc]/foo", feature: /character class/ },
+      { pattern: "src/?(foo).js", feature: /extglob/ },
+      { pattern: "src/?/foo.js", feature: /single-character wildcard/ }
+    ];
+    for (const { pattern, feature } of cases) {
+      const bad = {
+        ...defaultConfig,
+        ignore: { ...defaultConfig.ignore, paths: [pattern] }
+      };
+      expect(() => parseConfig(bad), `pattern ${pattern} should be rejected`).toThrow(feature);
+    }
+  });
 });
 
 describe("log", () => {

@@ -79,11 +79,13 @@ async function loadPackageJson(root) {
 
 async function readManifest() {
   const target = manifestPath();
-  if (!(await pathExists(target))) return null;
+  if (!(await pathExists(target))) {
+    return { ok: false, reason: "missing", path: target };
+  }
   try {
-    return await readJsonFile(target);
-  } catch {
-    return null;
+    return { ok: true, path: target, data: await readJsonFile(target) };
+  } catch (error) {
+    return { ok: false, reason: "corrupt", path: target, error: error?.message ?? String(error) };
   }
 }
 
@@ -162,7 +164,8 @@ export async function auditCommand(options = {}) {
     hashes[rel] = await hashFile(path.join(root, rel));
   }
 
-  const manifest = await readManifest();
+  const manifestResult = await readManifest();
+  const manifest = manifestResult.ok ? manifestResult.data : null;
   let verification = null;
   if (manifest) {
     const expectedFiles = manifest.files ?? {};
@@ -191,7 +194,7 @@ export async function auditCommand(options = {}) {
     installTimeScripts: installScripts,
     manifest: manifest
       ? { present: true, generatedAt: manifest.generatedAt ?? null, files: manifest.files }
-      : { present: false },
+      : { present: false, reason: manifestResult.reason, path: manifestResult.path, error: manifestResult.error ?? null },
     fileHashes: hashes,
     verification,
     project
@@ -251,7 +254,7 @@ export async function auditCommand(options = {}) {
     }
   } else {
     for (const rel of files) {
-      process.stdout.write(`  ${hashes[rel]}  ${rel} (no manifest)\n`);
+      process.stdout.write(`  ${hashes[rel]}  ${rel}\n`);
     }
   }
 
@@ -267,5 +270,12 @@ export async function auditCommand(options = {}) {
       process.stdout.write(`\n${parts.join(", ")} file(s) vs MANIFEST.json.\n`);
       process.exitCode = 1;
     }
+  } else {
+    const reason = manifestResult.reason === "missing"
+      ? `MANIFEST.json is missing at ${manifestResult.path}`
+      : `MANIFEST.json at ${manifestResult.path} could not be parsed: ${manifestResult.error}`;
+    process.stdout.write(`\n${reason}\n`);
+    process.stdout.write(`Integrity check could not run. Regenerate with \`npm run build-manifest\`.\n`);
+    process.exitCode = 1;
   }
 }
