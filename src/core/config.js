@@ -257,8 +257,26 @@ export const defaultConfig = {
     max_paths: 20
   },
   ignore: {
-    paths: ["dist/**", "coverage/**", "node_modules/**"],
-    extensions: [".lock"]
+    // Secret-bearing paths are bundled in here as a defense-in-depth
+    // layer alongside the pattern-based redactor: a file that's caught
+    // by the ignore filter never reaches `contextForFiles` or the diff
+    // pipeline, so the redactor isn't the only thing standing between a
+    // leaked credential and a model call. `.env.example` is also caught
+    // by the `.env.*` glob — a false positive we accept on purpose.
+    paths: [
+      "dist/**",
+      "coverage/**",
+      "node_modules/**",
+      ".env",
+      ".env.*",
+      ".npmrc",
+      ".pypirc",
+      ".netrc",
+      ".aws/**",
+      ".ssh/**",
+      ".config/gcloud/**"
+    ],
+    extensions: [".lock", ".pem", ".key", ".p12", ".pfx"]
   },
   claude: {
     enabled: true,

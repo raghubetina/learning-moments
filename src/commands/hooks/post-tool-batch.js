@@ -46,6 +46,22 @@ export async function postToolBatchHook(input) {
     return null;
   }
 
+  // Gate on the prompt budget upstream while the classifier is still
+  // inline. In active mode there's no point paying for a ~20s model call
+  // when the result will be silenced anyway (budget=1/hour by default
+  // means most calls would be silenced after the first one each hour).
+  // The authoritative budget check still happens inside the phase-2 lock
+  // — this is just an optimization that skips the slow path when the
+  // outcome is foreseeable. Observe-only mode still classifies so the
+  // ledger keeps capturing "what would have happened."
+  if (config.mode === "active") {
+    const ledgerForBudget = await readLedger(projectRoot);
+    if (!immediatePromptBudgetAvailable(ledgerForBudget, config)) {
+      await complete("immediate_prompt_budget_exhausted");
+      return null;
+    }
+  }
+
   // Defer the working-tree context until after every early-return path so
   // that disabled, paused, or budget-exhausted invocations never pay for
   // path discovery (and never trigger lazy hashing).

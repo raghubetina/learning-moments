@@ -49,4 +49,26 @@ describe("candidateFiles", () => {
     ];
     expect(candidateFiles(input, baseConfig)).toEqual(["src/foo.js", "package-lock.json"]);
   });
+
+  it("filters secret-bearing paths under defaultConfig.ignore", async () => {
+    const { defaultConfig } = await import("../src/core/config.js");
+    const input = [
+      "src/api.js",
+      ".env",
+      ".env.local",
+      ".env.production",
+      ".env.example",
+      ".npmrc",
+      ".pypirc",
+      ".netrc",
+      ".aws/credentials",
+      ".ssh/id_rsa",
+      ".config/gcloud/credentials.db",
+      "certs/server.pem",
+      "certs/server.key",
+      "store.p12",
+      "store.pfx"
+    ];
+    expect(candidateFiles(input, defaultConfig)).toEqual(["src/api.js"]);
+  });
 });
