@@ -13,6 +13,7 @@
     "src/",
     "MANIFEST.json",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE.md"
   ],
   "scripts": {
