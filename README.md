@@ -1,20 +1,22 @@
 # Learning Moments
 
-Learning Moments is an experimental Claude Code hook tool for asking brief questions tied to the code you are working on during AI-assisted programming.
+Learning Moments is an experimental Claude Code integration that adds brief checks of developer understanding to AI-assisted programming.
 
-The goal is not to quiz you constantly. Learning Moments watches for AI-authored project changes, asks Claude whether there is a high-value Learning Moment, and only interrupts when there is a specific moment worth asking about. If that check fails, declines, or times out, Learning Moments asks nothing and lets your Claude Code workflow continue.
+It watches project changes during Claude Code sessions and uses `claude -p` to decide whether there is a specific, situated question worth asking. When there is, it injects a short question into the normal Claude Code flow. When selection fails, declines, or times out, it stays quiet and lets the workflow continue.
+
+Learning Moments is for exercising understanding before moving on from AI-assisted changes. It is meant to complement tests, code review, and project instructions.
 
 ## Status
 
-This is an early alpha. It is useful for local testing and research prototypes, not a polished production tool.
+This is an early alpha intended for local testing and research prototypes.
 
 Current capabilities:
 
 - initialize project-local Learning Moments data
 - install Claude Code hooks into `.claude/settings.local.json`
 - create Claude Code slash command prompt files
-- track AI-authored file changes during a Claude Code session
-- ask Claude whether those changes contain a high-value Learning Moment
+- track file changes during a Claude Code session
+- select candidate Learning Moments with `claude -p`
 - ask an initial question in the normal Claude Code flow
 - capture the next user answer
 - use Claude Code to provide brief graded feedback
@@ -52,7 +54,7 @@ learning-moments init
 learning-moments doctor
 ```
 
-Start Claude Code normally from that project directory. When Learning Moments detects a high-value checkpoint, Claude will ask a short question in the normal chat flow.
+Start Claude Code normally from that project directory. When Learning Moments selects a candidate, it adds a short question to the normal chat flow.
 
 ## Upgrade
 

@@ -1,7 +1,7 @@
 {
   "name": "learning-moments",
-  "version": "0.1.1",
-  "description": "Learning Moments is a local Claude Code hook tool for asking brief questions tied to the code you are working on during AI-assisted programming.",
+  "version": "0.1.2",
+  "description": "A Claude Code integration that adds brief checks of developer understanding to AI-assisted programming.",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
