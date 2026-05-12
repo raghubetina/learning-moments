@@ -64,9 +64,35 @@ Focus on understanding, prediction, testing, or recall rather than generic code 
 };
 
 export const slashCommandPrompts = {
-  "status.md": `Run \`learning-moments status\` and summarize the result briefly.`,
-  "metrics.md": `Run \`learning-moments metrics\` and summarize the speed, interruption, and estimated cost results briefly.`,
-  "pause.md": `Run \`learning-moments pause --project\`, then summarize the result briefly.`,
-  "resume.md": `Run \`learning-moments resume --project\`, then summarize the result briefly.`,
-  "verify.md": `Ask Learning Moments to verify my understanding of the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.`
+  "status.md": `---
+description: Show whether Learning Moments is on and how many questions have been asked
+---
+
+Run \`learning-moments status\` and summarize the result briefly.
+`,
+  "metrics.md": `---
+description: Show Learning Moments timing, interruption rate, and estimated cost
+---
+
+Run \`learning-moments metrics\` and summarize the speed, interruption, and estimated cost results briefly.
+`,
+  "pause.md": `---
+description: Pause Learning Moments in this project (stops asking questions)
+---
+
+Run \`learning-moments pause --project\`, then confirm it was paused.
+`,
+  "resume.md": `---
+description: Resume Learning Moments in this project
+---
+
+Run \`learning-moments resume --project\`, then confirm it is active again.
+`,
+  "verify.md": `---
+description: Quiz me on the most recent meaningful AI-authored change in this project
+---
+
+Ask Learning Moments to verify my understanding of the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.
+`
 };
+

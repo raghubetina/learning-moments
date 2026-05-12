@@ -1,6 +1,6 @@
 {
   "name": "learning-moments",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A Claude Code integration that adds brief checks of developer understanding to AI-assisted programming.",
   "type": "module",
   "bin": {

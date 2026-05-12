@@ -34,9 +34,8 @@ async function installSlashCommands(projectRoot) {
   await fs.mkdir(commandDir, { recursive: true });
   let written = 0;
   for (const [fileName, content] of Object.entries(slashCommandPrompts)) {
-    if (await writeIfMissing(path.join(commandDir, fileName), content)) {
-      written += 1;
-    }
+    await fs.writeFile(path.join(commandDir, fileName), content);
+    written += 1;
   }
   return written;
 }

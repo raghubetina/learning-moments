@@ -4,6 +4,15 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-12
+
+Patch release. Slash command descriptions are now user-facing instead of prompt-to-Claude text, and `init` clobbers slash command files on every run so changes to defaults land without manual cleanup.
+
+### Changed
+
+- Slash commands now ship with YAML frontmatter `description:` fields aimed at the user reading the slash-command picker, not at Claude. Previously the first line of the prompt body ("Run `learning-moments status` and summarize the result briefly.") was what showed up in the picker — confusing copy if you're not Claude. The bodies still contain instructions to Claude when the command runs.
+- `init` now overwrites slash command files unconditionally instead of skipping any file that already exists. Since the tool has no users besides the author, customization-preservation ceremony isn't earning its keep yet; clobbering on every re-init means default changes land without each project needing a manual `rm .claude/commands/learning-moments/*.md` step first. If/when there are external users we'll revisit with a marker-based or content-hash-based check.
+
 ## [0.5.1] - 2026-05-12
 
 Two follow-up commits on the feedback-4 and feedback-5 audit notes. Mostly internal improvements; no on-disk format changes. The default config gains some secret-path ignores, so users who re-run `learning-moments init` after upgrading get a stronger first-line privacy filter (the existing pattern-based redactor is still in place for content that does reach the diff pipeline).
