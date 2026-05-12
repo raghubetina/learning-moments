@@ -3,14 +3,24 @@ import { loadConfig } from "../../core/config.js";
 import { findGitRoot, workspaceContext } from "../../core/git.js";
 import { parseCommonHookInput } from "../../core/hook-input.js";
 import { appendEvent, parseEvent } from "../../core/log.js";
+import { withProjectLock } from "../../core/lock.js";
 import { controlPath, migrationCompletePath } from "../../core/paths.js";
 
-const CONTROL_RETENTION_MS = 60 * 60 * 1000;
+const CONTROL_HOT_RETENTION_MS = 60 * 60 * 1000;
+const SESSION_BASELINE_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Drop rows from `control.jsonl` older than the trailing-1h window that
- * `classifierBudgetAvailable` and the PostToolBatch dedupe check use.
- * Best-effort: a failure here must never block a session from starting.
+ * Drop rows from `control.jsonl` once they pass their retention window.
+ * Hot-path control events (classifier_called, candidate_already_seen) only
+ * matter for the trailing 1h that `classifierBudgetAvailable` and the
+ * PostToolBatch dedupe check inspect. Session baselines need a longer
+ * window so that hot hooks can find the latest baseline for a session that
+ * spans hours. Best-effort: a failure here must never block a session
+ * from starting.
+ *
+ * Takes the `moments-jsonl` lock so the rewrite serializes against
+ * concurrent `appendEvent` calls (and any other future control-file
+ * mutator).
  *
  * @param {string} projectRoot
  */
@@ -20,36 +30,45 @@ async function pruneControlLog(projectRoot) {
   } catch {
     return;
   }
-  const target = controlPath(projectRoot);
-  let raw;
-  try {
-    raw = await fs.readFile(target, "utf8");
-  } catch (error) {
-    const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
-    if (code === "ENOENT") return;
-    throw error;
-  }
-  const cutoff = Date.now() - CONTROL_RETENTION_MS;
-  const kept = [];
-  for (const [index, line] of raw.split("\n").entries()) {
-    if (line.trim().length === 0) continue;
-    let event;
+  await withProjectLock(projectRoot, "moments-jsonl", async () => {
+    const target = controlPath(projectRoot);
+    let raw;
     try {
-      event = parseEvent(JSON.parse(line), `control[${index}]`);
-    } catch {
-      // Malformed line: keep it so the user notices, but it won't be
-      // referenced by hot paths anyway.
-      kept.push(line);
-      continue;
+      raw = await fs.readFile(target, "utf8");
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
+      if (code === "ENOENT") return;
+      throw error;
     }
-    const ts = new Date(event.timestamp).getTime();
-    if (Number.isFinite(ts) && ts >= cutoff) {
-      kept.push(line);
+    const now = Date.now();
+    const hotCutoff = now - CONTROL_HOT_RETENTION_MS;
+    const baselineCutoff = now - SESSION_BASELINE_RETENTION_MS;
+    const kept = [];
+    for (const [index, line] of raw.split("\n").entries()) {
+      if (line.trim().length === 0) continue;
+      let event;
+      try {
+        event = parseEvent(JSON.parse(line), `control[${index}]`);
+      } catch {
+        // Malformed line: keep it so the user notices, but it won't be
+        // referenced by hot paths anyway.
+        kept.push(line);
+        continue;
+      }
+      const ts = new Date(event.timestamp).getTime();
+      if (!Number.isFinite(ts)) {
+        kept.push(line);
+        continue;
+      }
+      const cutoff = event.type === "session_baseline_created" ? baselineCutoff : hotCutoff;
+      if (ts >= cutoff) {
+        kept.push(line);
+      }
     }
-  }
-  const staging = `${target}.staging`;
-  await fs.writeFile(staging, kept.length > 0 ? `${kept.join("\n")}\n` : "");
-  await fs.rename(staging, target);
+    const staging = `${target}.staging`;
+    await fs.writeFile(staging, kept.length > 0 ? `${kept.join("\n")}\n` : "");
+    await fs.rename(staging, target);
+  });
 }
 
 export async function sessionStartHook(input) {

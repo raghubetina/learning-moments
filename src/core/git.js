@@ -48,9 +48,26 @@ export function splitNul(raw) {
   return raw.split("\0").filter(Boolean);
 }
 
+/**
+ * Working-tree paths with any pending change (index or worktree, tracked
+ * or untracked).
+ *
+ * Uses `--untracked-files=all` so that a brand-new directory expands into
+ * its individual files rather than collapsing to the directory entry —
+ * otherwise candidates inside a newly-created folder never reach the
+ * classifier. For rename/copy entries (X = R or C), git's `-z` format is
+ * `<XY> <new>\0<old>\0`; we record the NEW path because that's where the
+ * current content lives. The OLD path is implicitly tracked via its
+ * deletion-side status when present.
+ *
+ * @param {string} [cwd]
+ * @returns {string[]}
+ */
 export function dirtyFiles(cwd = process.cwd()) {
   const root = findGitRoot(cwd);
-  const status = splitNul(runGit(["status", "--porcelain=v1", "-z"], root));
+  const status = splitNul(
+    runGit(["status", "--porcelain=v1", "-z", "--untracked-files=all"], root)
+  );
   const files = new Set();
 
   for (let index = 0; index < status.length; index += 1) {
@@ -59,8 +76,11 @@ export function dirtyFiles(cwd = process.cwd()) {
       continue;
     }
     const pathPart = entry.slice(3);
-    if (entry.startsWith("R ") || entry.startsWith("C ")) {
-      files.add(status[index + 1] ?? pathPart);
+    const x = entry[0];
+    if (x === "R" || x === "C") {
+      // `entry.slice(3)` is the new path; the next NUL-separated chunk is
+      // the old path — skip it.
+      files.add(pathPart);
       index += 1;
     } else {
       files.add(pathPart);

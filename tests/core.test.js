@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
-import { changedSinceBaseline, contextForFiles, gitHashObjects, workspaceContext } from "../src/core/git.js";
+import { changedSinceBaseline, contextForFiles, dirtyFiles, gitHashObjects, workspaceContext } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
@@ -547,5 +547,60 @@ describe("changedSinceBaseline", () => {
     const current = workspaceContext(root).toBaseline();
 
     expect(changedSinceBaseline(baseline, current)).toEqual(["new.txt", "tracked.txt"]);
+  });
+});
+
+describe("dirtyFiles", () => {
+  it("records the new path for a staged rename, not the old one", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "original.txt"), "content\n");
+    git(["add", "original.txt"], root);
+    git(["commit", "-m", "initial"], root);
+    git(["mv", "original.txt", "renamed.txt"], root);
+
+    const dirty = dirtyFiles(root);
+    expect(dirty).toContain("renamed.txt");
+    expect(dirty).not.toContain("original.txt");
+  });
+
+  it("expands new directories into their individual untracked files", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "seed.txt"), "seed\n");
+    git(["add", "seed.txt"], root);
+    git(["commit", "-m", "initial"], root);
+
+    await fs.mkdir(path.join(root, "newdir"), { recursive: true });
+    await fs.writeFile(path.join(root, "newdir", "a.txt"), "a\n");
+    await fs.writeFile(path.join(root, "newdir", "b.txt"), "b\n");
+
+    const dirty = dirtyFiles(root);
+    // Without --untracked-files=all this would just be ["newdir/"].
+    expect(dirty).toContain("newdir/a.txt");
+    expect(dirty).toContain("newdir/b.txt");
+    expect(dirty).not.toContain("newdir/");
+  });
+});
+
+describe("event-registry routing for session baselines", () => {
+  it("routes session_baseline_created to the control file, not the ledger", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    invalidateMigrationCache();
+    // Mark migration complete so appendEvent uses the class-routed paths.
+    await fs.mkdir(dataDir(root), { recursive: true });
+    await fs.writeFile(migrationCompletePath(root), "{}\n");
+
+    await appendEvent(root, {
+      type: "session_baseline_created",
+      session_id: "s1",
+      snapshot: { root, head: null, branch: null, candidates: [], hashes: {} }
+    });
+
+    const ledger = await readLedger(root);
+    const control = await readControl(root);
+    expect(ledger.find((e) => e.type === "session_baseline_created")).toBeUndefined();
+    expect(control.find((e) => e.type === "session_baseline_created")).toBeDefined();
   });
 });

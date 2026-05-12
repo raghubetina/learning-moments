@@ -22,7 +22,6 @@
 /** @type {Readonly<Record<string, EventClass>>} */
 export const EVENT_CLASSES = Object.freeze({
   // Class A — durable learning record
-  session_baseline_created: "ledger",
   moment_created: "ledger",
   moment_injected: "ledger",
   feedback_injected: "ledger",
@@ -36,7 +35,12 @@ export const EVENT_CLASSES = Object.freeze({
   question_observed: "ledger",
   moment_injection_missed: "ledger",
 
-  // Class B — hot-path control state
+  // Class B — hot-path control state.
+  // session_baseline_created is operational session state, not a durable
+  // learning artifact. Hot hooks read the latest baseline per session, so
+  // we keep it bounded (24h retention, longer than the 1h budget window)
+  // instead of letting it accumulate in the ledger forever.
+  session_baseline_created: "control",
   classifier_called: "control",
   candidate_already_seen: "control",
 

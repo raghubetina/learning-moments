@@ -15,11 +15,16 @@ import { controlPath, ledgerPath, logPath, migrationCompletePath, telemetryPath 
  * telemetry-only subset. The migration marker is written last; until it
  * appears, every reader and writer continues to use the unified file.
  *
+ * Takes the `moments-jsonl` lock — the same lock `appendEvent`, control
+ * pruning, and telemetry truncation use — so a hook can't append to the
+ * legacy file while migration is partitioning it (which would silently
+ * drop the appended row when the rename happens).
+ *
  * @param {string} projectRoot
  * @returns {Promise<{migrated: boolean, ledger: number, control: number, telemetry: number}>}
  */
 export async function migrateLegacyLog(projectRoot) {
-  return withProjectLock(projectRoot, "log-migration", async () => {
+  return withProjectLock(projectRoot, "moments-jsonl", async () => {
     try {
       await fs.access(migrationCompletePath(projectRoot));
       return { migrated: false, ledger: 0, control: 0, telemetry: 0 };

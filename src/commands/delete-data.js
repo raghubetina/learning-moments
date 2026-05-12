@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { findGitRoot } from "../core/git.js";
+import { withProjectLock } from "../core/lock.js";
 import { dataDir, migrationCompletePath, telemetryPath } from "../core/paths.js";
 
 /**
@@ -7,6 +8,9 @@ import { dataDir, migrationCompletePath, telemetryPath } from "../core/paths.js"
  * or the hot-path control file. Refuses if the project hasn't been migrated
  * yet — pre-migration the file at this path is the unified log and would
  * take ledger rows down with it.
+ *
+ * Takes the `moments-jsonl` lock so the truncate serializes against any
+ * in-flight `appendEvent` calls.
  *
  * @param {string} projectRoot
  */
@@ -20,7 +24,9 @@ async function truncateTelemetry(projectRoot) {
     process.exitCode = 1;
     return;
   }
-  await fs.writeFile(telemetryPath(projectRoot), "");
+  await withProjectLock(projectRoot, "moments-jsonl", async () => {
+    await fs.writeFile(telemetryPath(projectRoot), "");
+  });
   console.log("Truncated telemetry log (moments.jsonl). Ledger and control logs untouched.");
 }
 

@@ -45,14 +45,15 @@ export async function postToolBatchHook(input) {
     await complete("classifier_budget_exhausted");
     return null;
   }
-  const ledgerEvents = await readLedger(projectRoot);
 
   // Defer the working-tree context until after every early-return path so
   // that disabled, paused, or budget-exhausted invocations never pay for
   // path discovery (and never trigger lazy hashing).
   const ctx = workspaceContext(parsed.cwd, config);
 
-  const baseline = latestSessionBaseline(ledgerEvents, parsed.session_id) ?? {
+  // Baselines live in the control class — bounded retention so the hot
+  // path doesn't read more history than it needs.
+  const baseline = latestSessionBaseline(controlEvents, parsed.session_id) ?? {
     root: projectRoot,
     head: ctx.head,
     branch: ctx.branch,

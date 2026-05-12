@@ -348,4 +348,45 @@ describe("control log pruning at SessionStart", () => {
     expect(ids).not.toContain("lm_event_stale");
   });
 
+  it("keeps session_baseline_created rows for 24h, drops them after", async () => {
+    const { sessionStartHook } = await import("../src/commands/hooks/session-start.js");
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const now = Date.now();
+    const recentBaseline = JSON.stringify({
+      id: "lm_event_baseline_recent",
+      type: "session_baseline_created",
+      session_id: "s_recent",
+      timestamp: new Date(now - 6 * 60 * 60 * 1000).toISOString()
+    });
+    const ancientBaseline = JSON.stringify({
+      id: "lm_event_baseline_ancient",
+      type: "session_baseline_created",
+      session_id: "s_ancient",
+      timestamp: new Date(now - 36 * 60 * 60 * 1000).toISOString()
+    });
+    await fs.writeFile(controlPath(root), `${recentBaseline}\n${ancientBaseline}\n`);
+
+    await sessionStartHook({
+      session_id: "s_new",
+      transcript_path: path.join(root, "transcript.jsonl"),
+      cwd: root,
+      hook_event_name: "SessionStart",
+      source: "startup"
+    });
+
+    const remaining = (await fs.readFile(controlPath(root), "utf8"))
+      .trim()
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map((l) => JSON.parse(l));
+    const ids = remaining.map((e) => e.id);
+    // 6h old → inside the 24h baseline window
+    expect(ids).toContain("lm_event_baseline_recent");
+    // 36h old → past the 24h baseline window
+    expect(ids).not.toContain("lm_event_baseline_ancient");
+  });
+
 });
