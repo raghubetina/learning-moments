@@ -1,9 +1,9 @@
 {
   "name": "learning-moments",
   "version": "0.2.3",
-  "generatedAt": "2026-05-12T16:24:43.926Z",
+  "generatedAt": "2026-05-12T16:28:54.423Z",
   "files": {
-    "CHANGELOG.md": "d7fad7f0a14b30794058df1f823bedc110c5a5dadcfe24f2e504dfe669e46251",
+    "CHANGELOG.md": "fc2dbc638c83e6c0aa8f119448c44d7a3194e560e9f5ec11cb3b48e607a0003b",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "0c50ebcae87823f68854543a788e4745e10639fda0a93de2d2f92db82d67934b",
     "package.json": "b2ca48e8a97dd734dc9dbdbe8819a4bdb6059986cfb2afc16ae6cda53016dedb",
@@ -39,7 +39,7 @@
     "src/core/hook-input.js": "26fbfd26787126796e85597b9058b17c6e3796e9e4a8e8b7b5b08d3fd9fba2c3",
     "src/core/hook-runner.js": "9210156c2321cfea9b5b4f8b92654694a74ee1651eff120c0490207566e9b129",
     "src/core/ids.js": "df0944f52e17fd64174097a3827598d34bb2f24c99fc1051138be00faaf48c5f",
-    "src/core/lock.js": "61cda22a64d5a3dd108e4cb6958fce7ddca8ae183a7ce21b5cf586913257b5f6",
+    "src/core/lock.js": "381d615dfd32b2dca6f86d3eea35ae69cfa36742b165459a0160a2b859eccecc",
     "src/core/log.js": "ff1126358db950b00f542509a50da22b1551c58745edef038a987b1a8f19b155",
     "src/core/path-self.js": "421d213d48e8af3ac1d4bb4436adbaffbc68d7be01a7d2776f4e1cb7c66cb978",
     "src/core/paths.js": "7e9fc88e06d73e666cb08d1fb8e2bd934f336a1a780e143235d8876b22aba6f0",

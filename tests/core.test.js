@@ -6,8 +6,9 @@ import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
 import { changedSinceBaseline, contextForFiles, snapshot } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
+import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
 import { appendEvent, readEvents } from "../src/core/log.js";
-import { configPath, dataDir } from "../src/core/paths.js";
+import { configPath, dataDir, locksDir } from "../src/core/paths.js";
 import { redactSecrets } from "../src/core/redaction.js";
 
 async function tempDir() {
@@ -125,6 +126,60 @@ describe("redaction", () => {
     expect(result.text).toContain("[REDACTED_ANTHROPIC_KEY");
     expect(result.text).toContain("hash=");
     expect(result.findings[0]?.type).toBe("ANTHROPIC_KEY");
+  });
+});
+
+describe("locks", () => {
+  async function plantStaleLock(root, lockName, holder) {
+    const lockRoot = locksDir(root);
+    await fs.mkdir(lockRoot, { recursive: true });
+    const lockPath = path.join(lockRoot, `${lockName}.lock`);
+    await fs.mkdir(lockPath);
+    if (holder) {
+      await fs.writeFile(path.join(lockPath, "holder.json"), `${JSON.stringify(holder)}\n`);
+    }
+    return lockPath;
+  }
+
+  it("acquires and releases a lock end-to-end", async () => {
+    const root = await tempDir();
+    let ran = false;
+    await withProjectLock(root, "regression", async () => {
+      ran = true;
+    });
+    expect(ran).toBe(true);
+    await expect(fs.stat(path.join(locksDir(root), "regression.lock"))).rejects.toThrow();
+  });
+
+  it("reclaims a lock whose recorded PID is no longer alive", async () => {
+    const root = await tempDir();
+    // PID 2 ** 22 is well above any normal pid_max; not in use on a CI runner.
+    await plantStaleLock(root, "deadpid", { pid: 2 ** 22, acquiredAt: Date.now(), lockName: "deadpid" });
+    let ran = false;
+    await withProjectLock(root, "deadpid", async () => {
+      ran = true;
+    });
+    expect(ran).toBe(true);
+  });
+
+  it("reclaims a lock that exceeds the age threshold even if the PID is alive", async () => {
+    const root = await tempDir();
+    // Current process is alive, but acquired more than 5 minutes ago.
+    const sixMinutesAgo = Date.now() - 6 * 60 * 1000;
+    await plantStaleLock(root, "ancient", { pid: process.pid, acquiredAt: sixMinutesAgo, lockName: "ancient" });
+    let ran = false;
+    await withProjectLock(root, "ancient", async () => {
+      ran = true;
+    });
+    expect(ran).toBe(true);
+  });
+
+  it("does not reclaim a fresh lock held by a live process", async () => {
+    const root = await tempDir();
+    await plantStaleLock(root, "live", { pid: process.pid, acquiredAt: Date.now(), lockName: "live" });
+    await expect(
+      withProjectLock(root, "live", async () => {}, 200)
+    ).rejects.toBeInstanceOf(LockTimeoutError);
   });
 });
 
