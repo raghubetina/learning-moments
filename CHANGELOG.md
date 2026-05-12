@@ -4,6 +4,8 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-12
+
 ### Added
 
 - `scripts/release-verify.js`: packs the project, installs the tarball into a throwaway consumer project, and runs `learning-moments audit` against the installed copy. Catches packaging-shaped bugs that the in-repo audit cannot see — a file referenced by code but missing from `package.json` `files`, executable bits stripped during pack, manifest drift. Wired into the `release` npm script and into the publish workflow (after `npm pack --dry-run`, before `npm publish`), so a release tag that would produce a broken tarball now fails CI before the tarball reaches the registry.
@@ -82,7 +84,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/raghubetina/learning-moments/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/raghubetina/learning-moments/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raghubetina/learning-moments/compare/v0.2.1...v0.2.2
