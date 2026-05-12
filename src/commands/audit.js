@@ -152,21 +152,32 @@ export async function auditCommand(options = {}) {
     .map(([name, value]) => ({ name, value }));
 
   const shippedEntries = pkg.files ?? [];
-  const files = await listFiles(root, shippedEntries);
+  // MANIFEST.json is the audit baseline; build-manifest.js excludes it from
+  // its own hash map (a file cannot hash itself), so audit excludes it here
+  // to keep the two sides symmetric.
+  const auditedEntries = shippedEntries.filter((entry) => entry !== "MANIFEST.json");
+  const files = await listFiles(root, auditedEntries);
   const hashes = {};
   for (const rel of files) {
     hashes[rel] = await hashFile(path.join(root, rel));
   }
 
   const manifest = await readManifest();
-  const verification = manifest
-    ? files.map((rel) => ({
-        path: rel,
-        match: manifest.files?.[rel] === hashes[rel],
-        actual: hashes[rel],
-        expected: manifest.files?.[rel] ?? null
-      }))
-    : null;
+  let verification = null;
+  if (manifest) {
+    const expectedFiles = manifest.files ?? {};
+    const allPaths = new Set([...Object.keys(expectedFiles), ...files]);
+    verification = [...allPaths].sort().map((rel) => {
+      const expected = expectedFiles[rel] ?? null;
+      const actual = hashes[rel] ?? null;
+      let status;
+      if (!expected) status = "unexpected";
+      else if (!actual) status = "missing";
+      else if (expected !== actual) status = "mismatch";
+      else status = "match";
+      return { path: rel, status, expected, actual, match: status === "match" };
+    });
+  }
 
   const project = await projectInfo();
 
@@ -229,22 +240,31 @@ export async function auditCommand(options = {}) {
   }
 
   process.stdout.write(`Shipped files (SHA-256):\n`);
-  for (const rel of files) {
-    let suffix = "";
-    if (verification) {
-      const row = verification.find((v) => v.path === rel);
-      if (!row.expected) suffix = " (not in manifest)";
-      else if (!row.match) suffix = " MISMATCH";
-    } else {
-      suffix = " (no manifest)";
+  if (verification) {
+    for (const row of verification) {
+      const hash = row.actual ?? "-".repeat(64);
+      let suffix = "";
+      if (row.status === "missing") suffix = " MISSING";
+      else if (row.status === "unexpected") suffix = " UNEXPECTED (not in manifest)";
+      else if (row.status === "mismatch") suffix = " MISMATCH";
+      process.stdout.write(`  ${hash}  ${row.path}${suffix}\n`);
     }
-    process.stdout.write(`  ${hashes[rel]}  ${rel}${suffix}\n`);
+  } else {
+    for (const rel of files) {
+      process.stdout.write(`  ${hashes[rel]}  ${rel} (no manifest)\n`);
+    }
   }
 
   if (verification) {
-    const mismatches = verification.filter((v) => v.expected && !v.match);
-    if (mismatches.length > 0) {
-      process.stdout.write(`\n${mismatches.length} file(s) differ from MANIFEST.json.\n`);
+    const failures = verification.filter((v) => v.status !== "match");
+    if (failures.length > 0) {
+      const counts = { missing: 0, unexpected: 0, mismatch: 0 };
+      for (const f of failures) counts[f.status] += 1;
+      const parts = [];
+      if (counts.mismatch > 0) parts.push(`${counts.mismatch} mismatched`);
+      if (counts.missing > 0) parts.push(`${counts.missing} missing`);
+      if (counts.unexpected > 0) parts.push(`${counts.unexpected} unexpected`);
+      process.stdout.write(`\n${parts.join(", ")} file(s) vs MANIFEST.json.\n`);
       process.exitCode = 1;
     }
   }

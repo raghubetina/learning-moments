@@ -23,6 +23,14 @@ export function assertInteger(value, loc) {
   return value;
 }
 
+export function assertIntegerMin(value, min, loc) {
+  assertInteger(value, loc);
+  if (value < min) {
+    throw new Error(`${loc}: expected integer >= ${min}, got ${value}`);
+  }
+  return value;
+}
+
 export function assertBoolean(value, loc) {
   if (typeof value !== "boolean") fail(loc, "boolean", value);
   return value;

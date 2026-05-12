@@ -1,12 +1,12 @@
 {
   "name": "learning-moments",
   "version": "0.2.0",
-  "generatedAt": "2026-05-12T13:05:19.558Z",
+  "generatedAt": "2026-05-12T13:57:10.428Z",
   "files": {
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "88990c054e830270fc01853a5235d3a12a024f02da09fc85bdd47c1b953458a1",
     "src/cli.js": "959cb92cae195904181febfd606ba7d850ee28208ef47452e4ff109377595177",
-    "src/commands/audit.js": "64e471855a75117136268934822971f76486a6658bcf775d53f644afb4d1ae84",
+    "src/commands/audit.js": "038a328d0212930246baf4d89cda87b1c726b0160d2cc07165f33dd96be33787",
     "src/commands/delete-data.js": "e571e0334685c83e15fe7a19aa07f4b1a3b9021c72640178ee15e2d3eced16ef",
     "src/commands/doctor.js": "d4407e30a0db3236d72a8b16f8354e4088604c52bb08ce1c728e83463ecac94f",
     "src/commands/hooks/post-tool-batch.js": "a068f1aae5b0615a575114a9513d5aaf7c88d9dc2e49092c2cfb6124437a883c",
@@ -27,7 +27,7 @@
     "src/core/classifier.js": "e12f2e7f6ee7c3865603ca3224d48e28d2cda33c5cd1b6a0b0b65d068fb47953",
     "src/core/claude-settings.js": "bdebfd6efcfa4626e57ab5bd07122bcfff3421d1983187e00ce023936f9a8b8e",
     "src/core/claude.js": "aa7edcfb14b941e9c0e0433cb55a15d2d86dd5cd31d6bd67f0bd1d01a2d8e3b0",
-    "src/core/config.js": "ae87266912ba85d2a2f07fc7654c777a224dcd7d7e1520e444aecbde500b4de2",
+    "src/core/config.js": "34ae15b1f1586d1c4ba754c343bc674852a518938b32894e7968b653b35022de",
     "src/core/defaults.js": "26bf67fe6aa4bfdc91d1182aefce3661e4295f8ae1877fe6863b28451867810e",
     "src/core/file-utils.js": "78599c8ca19bf40b47a852436ead4192fd126c9f6270eea5fdabe5bba84a0c8a",
     "src/core/filter.js": "efebb28518af4a426c2248bf7424122a873ca296f1b34560ad564d0ec50b1051",
@@ -43,6 +43,6 @@
     "src/core/redaction.js": "96d7add0e6ed413b22d8beb071094b79758f880ba0a1feebd6f3587dbdc4f0dc",
     "src/core/state.js": "8d67ab6c1921b4c3848df8b9407daa03d27f0822673a37baa65514c808c3b81c",
     "src/core/stdin.js": "9a0861dec8d85665660803f9ab065154ee657b6fc1d8f8c46112bd35e1c0f0e2",
-    "src/core/validate.js": "a0899b0b60534c4c926ef1e7c257c3ae78e56ecb9a22275f49276eb17d292fc4"
+    "src/core/validate.js": "5bb3d8d5366c4b4ed68f5bac9dc61f2eb162a912a5027d16e3a8b279fa2b3e23"
   }
 }

@@ -5,7 +5,7 @@ import {
   assertArray,
   assertBoolean,
   assertEnum,
-  assertInteger,
+  assertIntegerMin,
   assertObject,
   assertString
 } from "./validate.js";
@@ -51,36 +51,46 @@ export function parseConfig(raw, loc = "config") {
       sessions: parseSessionsMap(paused.sessions, `${loc}.paused.sessions`)
     },
     frequency: {
-      immediate_prompts_per_hour: assertInteger(
+      immediate_prompts_per_hour: assertIntegerMin(
         frequency.immediate_prompts_per_hour,
+        0,
         `${loc}.frequency.immediate_prompts_per_hour`
       ),
-      minimum_minutes_between_immediate_prompts: assertInteger(
+      minimum_minutes_between_immediate_prompts: assertIntegerMin(
         frequency.minimum_minutes_between_immediate_prompts,
+        0,
         `${loc}.frequency.minimum_minutes_between_immediate_prompts`
       ),
-      session_start_recall_limit: assertInteger(
+      session_start_recall_limit: assertIntegerMin(
         frequency.session_start_recall_limit,
+        0,
         `${loc}.frequency.session_start_recall_limit`
       ),
-      classifier_calls_per_hour: assertInteger(
+      classifier_calls_per_hour: assertIntegerMin(
         frequency.classifier_calls_per_hour,
+        0,
         `${loc}.frequency.classifier_calls_per_hour`
       )
     },
     mode: assertEnum(obj.mode, MODES, `${loc}.mode`),
     context_storage: assertEnum(obj.context_storage, CONTEXT_STORAGE, `${loc}.context_storage`),
     context_limits: {
-      max_diff_chars: assertInteger(contextLimits.max_diff_chars, `${loc}.context_limits.max_diff_chars`),
-      max_file_excerpt_chars: assertInteger(
+      max_diff_chars: assertIntegerMin(
+        contextLimits.max_diff_chars,
+        0,
+        `${loc}.context_limits.max_diff_chars`
+      ),
+      max_file_excerpt_chars: assertIntegerMin(
         contextLimits.max_file_excerpt_chars,
+        0,
         `${loc}.context_limits.max_file_excerpt_chars`
       ),
-      max_transcript_excerpt_chars: assertInteger(
+      max_transcript_excerpt_chars: assertIntegerMin(
         contextLimits.max_transcript_excerpt_chars,
+        0,
         `${loc}.context_limits.max_transcript_excerpt_chars`
       ),
-      max_paths: assertInteger(contextLimits.max_paths, `${loc}.context_limits.max_paths`)
+      max_paths: assertIntegerMin(contextLimits.max_paths, 0, `${loc}.context_limits.max_paths`)
     },
     ignore: {
       paths: parseStringArray(ignore.paths, `${loc}.ignore.paths`),
@@ -95,12 +105,14 @@ export function parseConfig(raw, loc = "config") {
       enabled: claude.enabled === undefined ? true : assertBoolean(claude.enabled, `${loc}.claude.enabled`),
       classifier_model: assertString(claude.classifier_model, `${loc}.claude.classifier_model`),
       grading_model: assertString(claude.grading_model, `${loc}.claude.grading_model`),
-      classifier_timeout_seconds: assertInteger(
+      classifier_timeout_seconds: assertIntegerMin(
         claude.classifier_timeout_seconds,
+        1,
         `${loc}.claude.classifier_timeout_seconds`
       ),
-      grader_timeout_seconds: assertInteger(
+      grader_timeout_seconds: assertIntegerMin(
         claude.grader_timeout_seconds,
+        1,
         `${loc}.claude.grader_timeout_seconds`
       ),
       no_hooks_settings_file: assertString(claude.no_hooks_settings_file, `${loc}.claude.no_hooks_settings_file`),

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { defaultConfig, loadConfig, writeConfig } from "../src/core/config.js";
+import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
 import { changedSinceBaseline, contextForFiles, snapshot } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
 import { appendEvent, readEvents } from "../src/core/log.js";
@@ -53,6 +53,36 @@ describe("config", () => {
     await writeConfig(root, defaultConfig);
     await expect(fs.stat(configPath(root))).resolves.toBeTruthy();
     await expect(loadConfig(root)).resolves.toEqual(defaultConfig);
+  });
+
+  it("rejects negative frequency limits", () => {
+    const bad = {
+      ...defaultConfig,
+      frequency: { ...defaultConfig.frequency, immediate_prompts_per_hour: -1 }
+    };
+    expect(() => parseConfig(bad)).toThrow(/immediate_prompts_per_hour/);
+  });
+
+  it("rejects negative context limits", () => {
+    const bad = {
+      ...defaultConfig,
+      context_limits: { ...defaultConfig.context_limits, max_diff_chars: -10 }
+    };
+    expect(() => parseConfig(bad)).toThrow(/max_diff_chars/);
+  });
+
+  it("rejects zero or negative Claude call timeouts", () => {
+    const zero = {
+      ...defaultConfig,
+      claude: { ...defaultConfig.claude, classifier_timeout_seconds: 0 }
+    };
+    expect(() => parseConfig(zero)).toThrow(/classifier_timeout_seconds/);
+
+    const negative = {
+      ...defaultConfig,
+      claude: { ...defaultConfig.claude, grader_timeout_seconds: -5 }
+    };
+    expect(() => parseConfig(negative)).toThrow(/grader_timeout_seconds/);
   });
 });
 
