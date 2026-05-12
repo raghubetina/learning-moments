@@ -356,6 +356,8 @@ describe("hook flow", () => {
     await initCommand({});
 
     const previousExitCode = process.exitCode;
+    const previousDebug = process.env.LEARNING_MOMENTS_DEBUG;
+    delete process.env.LEARNING_MOMENTS_DEBUG;
     try {
       await runHook("post-tool-use", async () => {
         throw new Error("synthetic failure for test");
@@ -363,6 +365,8 @@ describe("hook flow", () => {
       expect(process.exitCode).toBe(0);
     } finally {
       process.exitCode = previousExitCode;
+      if (previousDebug === undefined) delete process.env.LEARNING_MOMENTS_DEBUG;
+      else process.env.LEARNING_MOMENTS_DEBUG = previousDebug;
     }
 
     const events = await readEvents(root);
@@ -371,6 +375,33 @@ describe("hook flow", () => {
     expect(errorEvent.hook_event_name).toBe("post-tool-use");
     expect(errorEvent.error_message).toContain("synthetic failure for test");
     expect(typeof errorEvent.duration_ms).toBe("number");
+    expect(errorEvent.error_stack).toBeUndefined();
+  });
+
+  it("includes the stack in hook_error events when LEARNING_MOMENTS_DEBUG=1", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const previousExitCode = process.exitCode;
+    const previousDebug = process.env.LEARNING_MOMENTS_DEBUG;
+    process.env.LEARNING_MOMENTS_DEBUG = "1";
+    try {
+      await runHook("post-tool-use", async () => {
+        throw new Error("debug-mode failure");
+      });
+    } finally {
+      process.exitCode = previousExitCode;
+      if (previousDebug === undefined) delete process.env.LEARNING_MOMENTS_DEBUG;
+      else process.env.LEARNING_MOMENTS_DEBUG = previousDebug;
+    }
+
+    const events = await readEvents(root);
+    const errorEvent = events.find((event) => event.type === "hook_error");
+    expect(errorEvent).toBeTruthy();
+    expect(errorEvent.error_message).toBe("debug-mode failure");
+    expect(typeof errorEvent.error_stack).toBe("string");
+    expect(errorEvent.error_stack).toContain("debug-mode failure");
   });
 
   it("silences a moment when the classifier returns timing=ask_later", async () => {
