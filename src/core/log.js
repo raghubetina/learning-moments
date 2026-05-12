@@ -1,5 +1,6 @@
 // @ts-check
 import fs from "node:fs/promises";
+import { isKnownEventType } from "./event-registry.js";
 import { createId } from "./ids.js";
 import { logPath } from "./paths.js";
 import { withProjectLock } from "./lock.js";
@@ -59,6 +60,11 @@ export function normalizeEvent(event) {
 export async function appendEvent(projectRoot, event) {
   return withProjectLock(projectRoot, "moments-jsonl", async () => {
     const normalized = normalizeEvent(event);
+    if (!isKnownEventType(normalized.type)) {
+      throw new Error(
+        `Unknown event type "${normalized.type}". Add it to src/core/event-registry.js with a retention class (ledger | control | telemetry) before writing it.`
+      );
+    }
     await fs.appendFile(logPath(projectRoot), `${JSON.stringify(normalized)}\n`);
     return normalized;
   });

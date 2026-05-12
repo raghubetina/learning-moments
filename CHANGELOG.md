@@ -4,6 +4,10 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Added
+
+- `src/core/event-registry.js` enumerates every event type the tool writes and assigns each one a retention class (`ledger`, `control`, or `telemetry`). `appendEvent` now throws on an unknown type rather than silently writing it, so a new event introduced without a registry decision fails loudly at write time. A test scans `src/` for `type: "..."` literals and asserts every one appears in the registry, keeping the table from drifting out of sync. Foundation for the upcoming log split (#13); no on-disk format changes yet.
+
 ## [0.4.0] - 2026-05-12
 
 Breaking minor release. Tightens the config validation surface (a 0.3.0 changelog claim that wasn't backed by code is now true) and stops `snapshot()` from doing repository-wide file reads on hot hook paths. Pairs with the safety nets in 0.3.2: any hook failure produced by stricter validation will now fail-open with a logged `hook_error` event.

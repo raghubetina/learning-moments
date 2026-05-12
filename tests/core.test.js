@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
 import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../src/core/git.js";
@@ -131,6 +134,54 @@ describe("log", () => {
     const events = await readEvents(root);
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe("hook_error");
+  });
+
+  it("rejects events with an unknown type", async () => {
+    const root = await tempDir();
+    await fs.mkdir(dataDir(root), { recursive: true });
+    await expect(appendEvent(root, { type: "not_a_real_event", cwd: root })).rejects.toThrow(
+      /Unknown event type/
+    );
+  });
+});
+
+describe("event registry", () => {
+  it("covers every event type literal that appears in src/", async () => {
+    const srcRoot = path.join(__dirname, "..", "src");
+    const literals = new Set();
+    async function walk(dir) {
+      for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.isFile() && entry.name.endsWith(".js")) {
+          const text = await fs.readFile(full, "utf8");
+          for (const match of text.matchAll(/type:\s*"([a-z_]+)"/g)) {
+            literals.add(match[1]);
+          }
+          for (const match of text.matchAll(/type:\s*[A-Za-z_]+\s*\?\s*"([a-z_]+)"\s*:\s*"([a-z_]+)"/g)) {
+            literals.add(match[1]);
+            literals.add(match[2]);
+          }
+        }
+      }
+    }
+    await walk(srcRoot);
+    // Drop validate.js noise (type:"string", etc) — those aren't event types.
+    const validatorTypes = new Set(["string", "integer", "number", "boolean", "array", "object", "command", "predict"]);
+    const eventLiterals = [...literals].filter((t) => !validatorTypes.has(t));
+
+    const { EVENT_CLASSES } = await import("../src/core/event-registry.js");
+    const missing = eventLiterals.filter((t) => !Object.prototype.hasOwnProperty.call(EVENT_CLASSES, t));
+    expect(missing).toEqual([]);
+  });
+
+  it("classifies every registered type as ledger, control, or telemetry", async () => {
+    const { EVENT_CLASSES } = await import("../src/core/event-registry.js");
+    const valid = new Set(["ledger", "control", "telemetry"]);
+    for (const [type, klass] of Object.entries(EVENT_CLASSES)) {
+      expect(valid.has(klass), `${type} → ${klass}`).toBe(true);
+    }
   });
 });
 
