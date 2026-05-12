@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { loadConfig } from "../../core/config.js";
-import { findGitRoot, snapshot } from "../../core/git.js";
+import { findGitRoot, workspaceContext } from "../../core/git.js";
 import { parseCommonHookInput } from "../../core/hook-input.js";
 import { appendEvent, parseEvent } from "../../core/log.js";
 import { controlPath, migrationCompletePath } from "../../core/paths.js";
@@ -82,13 +82,13 @@ export async function sessionStartHook(input) {
     return;
   }
 
-  const snap = snapshot(parsed.cwd, config);
+  const ctx = workspaceContext(parsed.cwd, config);
   await appendEvent(projectRoot, {
     type: "session_baseline_created",
     session_id: parsed.session_id,
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
-    snapshot: snap
+    snapshot: ctx.toBaseline()
   });
   // Best-effort pruning of the control log. We deliberately swallow errors:
   // a failure to compact control.jsonl must not interrupt session start.

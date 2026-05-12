@@ -1,15 +1,14 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { candidateFiles } from "./filter.js";
 
-// Read budgets for hot-path file operations. fileHash and contextForFiles
-// previously trusted whatever was on disk; both could be tricked into
-// reading 100+ MB build artifacts or untracked binaries. The size cap
-// keeps single-file work cheap; the NUL-byte probe is the same trick
-// lefthook uses to short-circuit binary content before decoding as UTF-8.
-const MAX_HASH_BYTES = 1024 * 1024;
+// Read budget for context excerpts. contextForFiles reads file content
+// directly to embed in classifier prompts; we cap that work so a stray
+// 100MB log doesn't blow up a single hook. Hashing no longer happens in
+// our process (we delegate to `git hash-object`), so it doesn't need a
+// matching guard. The NUL-byte probe is the same trick lefthook uses to
+// short-circuit binary content before decoding as UTF-8.
 const MAX_CONTEXT_FILE_BYTES = 1024 * 1024;
 const BINARY_PROBE_BYTES = 8192;
 
@@ -71,42 +70,114 @@ export function dirtyFiles(cwd = process.cwd()) {
   return [...files].sort();
 }
 
-export function fileHash(root, relativePath) {
-  const fullPath = path.join(root, relativePath);
-  let stat;
-  try {
-    stat = fs.statSync(fullPath);
-  } catch {
-    return null;
+/**
+ * Hash a batch of working-tree paths via `git hash-object --stdin-paths`.
+ * Returns a path → blob hash map. Paths that don't exist on disk (e.g. a
+ * deletion still appearing in `git status`) get a `null` entry so
+ * baseline comparison can detect their absence as a change.
+ *
+ * Two reasons for delegating to git rather than reading + SHA-256-ing in
+ * Node:
+ *   1. Git keeps a blob cache; clean tracked files don't touch disk.
+ *   2. A single spawn beats N file reads + N hashes for typical hook
+ *      workloads (tens of dirty paths).
+ *
+ * @param {string} root
+ * @param {string[]} files
+ * @returns {Record<string, string | null>}
+ */
+export function gitHashObjects(root, files) {
+  /** @type {Record<string, string | null>} */
+  const out = {};
+  if (files.length === 0) return out;
+
+  /** @type {string[]} */
+  const present = [];
+  for (const file of files) {
+    try {
+      const stat = fs.statSync(path.join(root, file));
+      if (stat.isFile()) {
+        present.push(file);
+        continue;
+      }
+    } catch {
+      // not present — fall through to null entry below
+    }
+    out[file] = null;
   }
-  if (!stat.isFile()) return null;
-  if (stat.size > MAX_HASH_BYTES) return null;
-  const buf = fs.readFileSync(fullPath);
-  if (looksBinary(buf)) return null;
-  return createHash("sha256").update(buf).digest("hex");
+  if (present.length === 0) return out;
+
+  const stdin = `${present.join("\n")}\n`;
+  const raw = execFileSync("git", ["hash-object", "--stdin-paths"], {
+    cwd: root,
+    input: stdin,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  const hashes = raw.split("\n").filter(Boolean);
+  for (let i = 0; i < present.length; i += 1) {
+    out[present[i]] = hashes[i] ?? null;
+  }
+  return out;
 }
 
-export function snapshot(cwd = process.cwd(), config = null) {
+/**
+ * @typedef {Object} WorkspaceBaseline
+ * @property {string} root
+ * @property {string | null} head
+ * @property {string | null} branch
+ * @property {string[]} candidates
+ * @property {Record<string, string | null>} hashes
+ */
+
+/**
+ * Build a per-hook view of the working tree. Path discovery and filtering
+ * run eagerly (one `git status`, one filter pass — both cheap). Hashing is
+ * lazy: the `hashes` field is only populated when callers materialize the
+ * baseline payload via `toBaseline()`. Pause/disabled/budget-exhausted
+ * branches never pay for the hash step.
+ *
+ * @param {string} cwd
+ * @param {import("./config.js").Config | null} [config]
+ */
+export function workspaceContext(cwd, config = null) {
   const root = findGitRoot(cwd);
-  // Filter dirty files through the candidate gate before we open any of them
-  // for hashing. Without this we hash node_modules/foo.bin and every other
-  // ignored or generated file in the working tree, which is the cost path
-  // feedback_3 #1 identified. With a null config (e.g. tests calling
-  // snapshot() directly), keep the old behavior: hash everything.
+  const head = runGitOrNull(["rev-parse", "HEAD"], root);
+  const branch = runGitOrNull(["branch", "--show-current"], root);
   const allDirty = dirtyFiles(root);
-  const files = config ? candidateFiles(allDirty, config) : allDirty;
-  const hashes = Object.fromEntries(files.map((file) => [file, fileHash(root, file)]));
+  const candidates = config ? candidateFiles(allDirty, config) : allDirty;
+
+  /** @type {Record<string, string | null> | null} */
+  let memoHashes = null;
+  const hashes = () => {
+    if (memoHashes === null) memoHashes = gitHashObjects(root, candidates);
+    return memoHashes;
+  };
+
   return {
     root,
-    head: runGitOrNull(["rev-parse", "HEAD"], root),
-    branch: runGitOrNull(["branch", "--show-current"], root),
-    dirtyFiles: files,
-    hashes
+    head,
+    branch,
+    candidates,
+    hashes,
+    /**
+     * Materialize a JSON-serializable baseline for the event log.
+     * @returns {WorkspaceBaseline}
+     */
+    toBaseline() {
+      return { root, head, branch, candidates, hashes: hashes() };
+    }
   };
 }
 
+/**
+ * @param {WorkspaceBaseline} baseline
+ * @param {WorkspaceBaseline} current
+ * @returns {string[]}
+ */
 export function changedSinceBaseline(baseline, current) {
-  const files = new Set([...baseline.dirtyFiles, ...current.dirtyFiles]);
+  const files = new Set([...baseline.candidates, ...current.candidates]);
+  /** @type {string[]} */
   const changed = [];
   for (const file of files) {
     if (baseline.hashes[file] !== current.hashes[file]) {

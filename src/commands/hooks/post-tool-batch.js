@@ -2,8 +2,7 @@ import { immediatePromptBudgetAvailable, classifierBudgetAvailable } from "../..
 import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
-import { candidateFiles } from "../../core/filter.js";
-import { changedSinceBaseline, contextForFiles, findGitRoot, snapshot } from "../../core/git.js";
+import { changedSinceBaseline, contextForFiles, findGitRoot, workspaceContext } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
@@ -48,35 +47,32 @@ export async function postToolBatchHook(input) {
   }
   const ledgerEvents = await readLedger(projectRoot);
 
-  // Defer the working-tree snapshot until after every early-return path so
-  // that disabled, paused, or budget-exhausted invocations never pay its cost.
-  // Pass config so candidates are filtered (via ignore.paths and
-  // ignore.extensions) before any file is opened for hashing.
-  const current = snapshot(parsed.cwd, config);
+  // Defer the working-tree context until after every early-return path so
+  // that disabled, paused, or budget-exhausted invocations never pay for
+  // path discovery (and never trigger lazy hashing).
+  const ctx = workspaceContext(parsed.cwd, config);
 
   const baseline = latestSessionBaseline(ledgerEvents, parsed.session_id) ?? {
     root: projectRoot,
-    head: current.head,
-    branch: current.branch,
-    dirtyFiles: [],
+    head: ctx.head,
+    branch: ctx.branch,
+    candidates: [],
     hashes: {}
   };
-  if (baseline.head !== current.head || baseline.branch !== current.branch) {
+  if (baseline.head !== ctx.head || baseline.branch !== ctx.branch) {
     await appendEvent(projectRoot, {
       type: "session_baseline_created",
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd,
-      snapshot: current,
+      snapshot: ctx.toBaseline(),
       reason: "head_or_branch_changed"
     });
     await complete("baseline_reset_head_or_branch_changed");
     return null;
   }
-  const files = candidateFiles(changedSinceBaseline(baseline, current), config).slice(
-    0,
-    config.context_limits.max_paths
-  );
+  const current = ctx.toBaseline();
+  const files = changedSinceBaseline(baseline, current).slice(0, config.context_limits.max_paths);
   if (files.length === 0) {
     await complete("no_candidate");
     return null;

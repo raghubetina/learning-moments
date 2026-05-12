@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
-import { changedSinceBaseline, contextForFiles, fileHash, snapshot } from "../src/core/git.js";
+import { changedSinceBaseline, contextForFiles, gitHashObjects, workspaceContext } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
 import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
@@ -423,54 +423,57 @@ describe("settingsArgument (no-hooks settings file)", () => {
   });
 });
 
-describe("file content guards", () => {
-  it("fileHash returns null for files over the size cap", async () => {
-    const root = await tempDir();
-    git(["init", "-b", "main"], root);
-    // 2 MB > the 1 MB cap. Use a Buffer of printable bytes so it's not
-    // also caught by the binary guard.
-    const oversize = Buffer.alloc(2 * 1024 * 1024, "a");
-    await fs.writeFile(path.join(root, "big.txt"), oversize);
-    expect(fileHash(root, "big.txt")).toBeNull();
-  });
-
-  it("fileHash returns null for binary files (NUL byte in probe)", async () => {
-    const root = await tempDir();
-    git(["init", "-b", "main"], root);
-    const binary = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
-    await fs.writeFile(path.join(root, "blob.bin"), binary);
-    expect(fileHash(root, "blob.bin")).toBeNull();
-  });
-
-  it("fileHash still hashes small text files", async () => {
+describe("git-native hashing and workspace context", () => {
+  it("gitHashObjects hashes existing files and returns null for missing ones", async () => {
     const root = await tempDir();
     git(["init", "-b", "main"], root);
     await fs.writeFile(path.join(root, "hello.txt"), "hello\n");
-    expect(fileHash(root, "hello.txt")).toMatch(/^[0-9a-f]{64}$/);
+    const out = gitHashObjects(root, ["hello.txt", "does-not-exist.txt"]);
+    // Git blob SHA-1 of "hello\n" is the well-known constant ce013625...
+    expect(out["hello.txt"]).toBe("ce013625030ba8dba906f756967f9e9ca394464a");
+    expect(out["does-not-exist.txt"]).toBeNull();
   });
 
-  it("snapshot with config filters out ignored paths before hashing", async () => {
+  it("gitHashObjects returns an empty map for an empty input list", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    expect(gitHashObjects(root, [])).toEqual({});
+  });
+
+  it("workspaceContext with config filters out ignored paths before hashing", async () => {
     const root = await tempDir();
     git(["init", "-b", "main"], root);
     await fs.writeFile(path.join(root, "tracked.txt"), "tracked\n");
     git(["add", "tracked.txt"], root);
     git(["commit", "-m", "initial"], root);
 
-    // Edit the tracked file and add an ignorable file.
     await fs.writeFile(path.join(root, "tracked.txt"), "modified\n");
     await fs.mkdir(path.join(root, "dist"), { recursive: true });
     await fs.writeFile(path.join(root, "dist", "bundle.js"), "// build artifact\n");
 
     const config = {
-      ignore: {
-        paths: ["dist/**"],
-        extensions: []
-      }
+      ignore: { paths: ["dist/**"], extensions: [] }
     };
-    const snap = snapshot(root, config);
-    expect(snap.dirtyFiles).toContain("tracked.txt");
-    expect(snap.dirtyFiles).not.toContain("dist/bundle.js");
-    expect(snap.hashes["dist/bundle.js"]).toBeUndefined();
+    const ctx = workspaceContext(root, config);
+    expect(ctx.candidates).toContain("tracked.txt");
+    expect(ctx.candidates).not.toContain("dist/bundle.js");
+    const baseline = ctx.toBaseline();
+    expect(baseline.hashes["dist/bundle.js"]).toBeUndefined();
+    expect(baseline.hashes["tracked.txt"]).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("workspaceContext hashes lazily — content changes between build and toBaseline are reflected", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "a.txt"), "first\n");
+    const ctx = workspaceContext(root);
+    const firstHash = gitHashObjects(root, ["a.txt"])["a.txt"];
+    // Now overwrite the file before materializing the baseline.
+    await fs.writeFile(path.join(root, "a.txt"), "second\n");
+    const baseline = ctx.toBaseline();
+    const secondHash = gitHashObjects(root, ["a.txt"])["a.txt"];
+    expect(firstHash).not.toBe(secondHash);
+    expect(baseline.hashes["a.txt"]).toBe(secondHash);
   });
 });
 
@@ -528,8 +531,8 @@ describe("locks", () => {
   });
 });
 
-describe("git snapshots", () => {
-  it("distinguishes changes since a baseline", async () => {
+describe("changedSinceBaseline", () => {
+  it("distinguishes changes since a baseline using git-native hashes", async () => {
     const root = await tempDir();
     git(["init", "-b", "main"], root);
     await fs.writeFile(path.join(root, "tracked.txt"), "one\n");
@@ -537,11 +540,11 @@ describe("git snapshots", () => {
     git(["commit", "-m", "initial"], root);
 
     await fs.writeFile(path.join(root, "preexisting.txt"), "dirty\n");
-    const baseline = snapshot(root);
+    const baseline = workspaceContext(root).toBaseline();
 
     await fs.writeFile(path.join(root, "tracked.txt"), "two\n");
     await fs.writeFile(path.join(root, "new.txt"), "new\n");
-    const current = snapshot(root);
+    const current = workspaceContext(root).toBaseline();
 
     expect(changedSinceBaseline(baseline, current)).toEqual(["new.txt", "tracked.txt"]);
   });
