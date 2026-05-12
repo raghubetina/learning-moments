@@ -17,6 +17,7 @@ import { resumeCommand } from "./commands/resume.js";
 import { statusCommand } from "./commands/status.js";
 import { uninstallCommand } from "./commands/uninstall.js";
 import { verifyCommand } from "./commands/verify.js";
+import { runHook } from "./core/hook-runner.js";
 import { version } from "./core/path-self.js";
 import { printJson, readStdin } from "./core/stdin.js";
 
@@ -49,14 +50,6 @@ Other:
 async function readHookJson() {
   const raw = await readStdin();
   return raw.trim().length > 0 ? JSON.parse(raw) : {};
-}
-
-async function runHook(action) {
-  try {
-    await action();
-  } catch {
-    process.exitCode = 0;
-  }
 }
 
 function parse(args, schema) {
@@ -174,7 +167,7 @@ const dispatch = {
     if (!handler) {
       throw new Error(`unknown hook event: ${action}`);
     }
-    await runHook(handler);
+    await runHook(action, handler);
   }
 };
 

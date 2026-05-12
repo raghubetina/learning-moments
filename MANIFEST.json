@@ -1,13 +1,13 @@
 {
   "name": "learning-moments",
   "version": "0.2.3",
-  "generatedAt": "2026-05-12T15:48:18.362Z",
+  "generatedAt": "2026-05-12T16:24:43.926Z",
   "files": {
     "CHANGELOG.md": "d7fad7f0a14b30794058df1f823bedc110c5a5dadcfe24f2e504dfe669e46251",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "0c50ebcae87823f68854543a788e4745e10639fda0a93de2d2f92db82d67934b",
     "package.json": "b2ca48e8a97dd734dc9dbdbe8819a4bdb6059986cfb2afc16ae6cda53016dedb",
-    "src/cli.js": "959cb92cae195904181febfd606ba7d850ee28208ef47452e4ff109377595177",
+    "src/cli.js": "6ab2d5dfcac5e4437b40c783cc03d61f3f1fa4030caf32fa86b76028dec60d4b",
     "src/commands/audit.js": "78a6897346be891c54c1216bb9d73c0162440f357a9c8028c316a15556d471a3",
     "src/commands/delete-data.js": "e571e0334685c83e15fe7a19aa07f4b1a3b9021c72640178ee15e2d3eced16ef",
     "src/commands/doctor.js": "d4407e30a0db3236d72a8b16f8354e4088604c52bb08ce1c728e83463ecac94f",
@@ -37,6 +37,7 @@
     "src/core/git.js": "135b6fb53259703794fb42946183c90fd5ce94b0271f5f17c9115a14a6971834",
     "src/core/grader.js": "50747f5d748d68423cd149a342d8c33cc31fe3aeae6bc699e42f39eaea40eb69",
     "src/core/hook-input.js": "26fbfd26787126796e85597b9058b17c6e3796e9e4a8e8b7b5b08d3fd9fba2c3",
+    "src/core/hook-runner.js": "9210156c2321cfea9b5b4f8b92654694a74ee1651eff120c0490207566e9b129",
     "src/core/ids.js": "df0944f52e17fd64174097a3827598d34bb2f24c99fc1051138be00faaf48c5f",
     "src/core/lock.js": "61cda22a64d5a3dd108e4cb6958fce7ddca8ae183a7ce21b5cf586913257b5f6",
     "src/core/log.js": "ff1126358db950b00f542509a50da22b1551c58745edef038a987b1a8f19b155",

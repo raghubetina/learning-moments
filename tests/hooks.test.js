@@ -15,6 +15,7 @@ import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
+import { runHook } from "../src/core/hook-runner.js";
 import { readEvents } from "../src/core/log.js";
 
 let previousCwd;
@@ -347,6 +348,29 @@ describe("hook flow", () => {
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).not.toContain("grade_created");
     expect(events.map((event) => event.type)).not.toContain("answer_received");
+  });
+
+  it("records a hook_error event and exits cleanly when a hook throws", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+
+    const previousExitCode = process.exitCode;
+    try {
+      await runHook("post-tool-use", async () => {
+        throw new Error("synthetic failure for test");
+      });
+      expect(process.exitCode).toBe(0);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+
+    const events = await readEvents(root);
+    const errorEvent = events.find((event) => event.type === "hook_error");
+    expect(errorEvent).toBeTruthy();
+    expect(errorEvent.hook_event_name).toBe("post-tool-use");
+    expect(errorEvent.error_message).toContain("synthetic failure for test");
+    expect(typeof errorEvent.duration_ms).toBe("number");
   });
 
   it("logs visible feedback observation separately from question observation", async () => {
