@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { installHooks } from "../core/claude-settings.js";
-import { defaultConfig, writeConfig } from "../core/config.js";
+import { defaultConfig, parseConfig, writeConfig } from "../core/config.js";
 import { defaultProfile, defaultPrompts, slashCommandPrompts } from "../core/defaults.js";
 import { pathExists, writeJsonFile } from "../core/file-utils.js";
 import { findGitRoot } from "../core/git.js";
-import { dataDir, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
+import { configPath, dataDir, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
 
 async function writeIfMissing(filePath, content) {
   if (await pathExists(filePath)) {
@@ -50,8 +50,28 @@ export async function initCommand(options) {
     ...defaultConfig,
     mode: options.observeOnly ? "observe_only" : defaultConfig.mode
   };
-  if (!(await pathExists(path.join(dataDir(projectRoot), "config.json")))) {
+  const configFile = configPath(projectRoot);
+  let configAction = "skipped (already valid)";
+  if (await pathExists(configFile)) {
+    // Existing config — try a strict parse. If it fails (typically because
+    // of fields that were removed in a prior version), move the file aside
+    // and write the default. We do not silently mutate the user's config;
+    // the .bak is preserved so customizations can be merged back by hand.
+    try {
+      const raw = JSON.parse(await fs.readFile(configFile, "utf8"));
+      parseConfig(raw);
+    } catch (error) {
+      const backup = `${configFile}.bak`;
+      await fs.rename(configFile, backup);
+      await writeConfig(projectRoot, config);
+      configAction = `migrated (moved bad config to ${path.basename(backup)})`;
+      console.log(`Existing config did not validate: ${error?.message ?? error}`);
+      console.log(`  Backed up to ${backup}`);
+      console.log(`  Default config written. Merge any customizations back by hand.`);
+    }
+  } else {
     await writeConfig(projectRoot, config);
+    configAction = "written (new)";
   }
 
   await writeIfMissing(profilePath(projectRoot), defaultProfile);
@@ -67,6 +87,7 @@ export async function initCommand(options) {
   console.log("Learning Moments initialized.");
   console.log(`Project: ${projectRoot}`);
   console.log(`Settings: ${settingsFile}`);
+  console.log(`Config: ${configAction}`);
   console.log(`Slash commands written: ${slashCommands}`);
   console.log(`Gitignore updated: ${gitignoreChanged ? "yes" : "no"}`);
 }

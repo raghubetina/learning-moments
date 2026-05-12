@@ -54,6 +54,97 @@ describe("initCommand", () => {
       fs.stat(path.join(root, ".claude", "commands", "learning-moments", "status.md"))
     ).resolves.toBeTruthy();
   });
+
+  it("backs up an unparseable existing config and writes the default", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+
+    // Hand-plant a pre-0.3.0-shaped config: includes fields that are no
+    // longer accepted by the strict parser (confidence, generated_markers).
+    await fs.mkdir(path.join(root, ".learning-moments"), { recursive: true });
+    const legacyConfig = {
+      schema_version: 1,
+      tool_version: "0.1.0",
+      enabled: true,
+      paused: { project: false, sessions: {} },
+      frequency: {
+        immediate_prompts_per_hour: 1,
+        minimum_minutes_between_immediate_prompts: 20,
+        session_start_recall_limit: 2,
+        classifier_calls_per_hour: 10
+      },
+      mode: "active",
+      context_storage: "excerpts",
+      context_limits: {
+        max_diff_chars: 12000,
+        max_paths: 20,
+        max_file_excerpt_chars: 8000
+      },
+      ignore: {
+        paths: ["dist/**"],
+        extensions: [".lock"],
+        generated_markers: ["@generated"]
+      },
+      confidence: { enabled: true, ask_when_useful: true },
+      claude: {
+        enabled: true,
+        classifier_model: "opus",
+        grading_model: "opus",
+        classifier_timeout_seconds: 45,
+        grader_timeout_seconds: 45,
+        use_bare_when_compatible: false
+      }
+    };
+    await fs.writeFile(
+      path.join(root, ".learning-moments", "config.json"),
+      `${JSON.stringify(legacyConfig, null, 2)}\n`
+    );
+
+    // Suppress init's console.log output during the test.
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await initCommand({});
+    } finally {
+      log.mockRestore();
+    }
+
+    // The bad config should now live at config.json.bak; the new
+    // config.json should pass strict parse and contain no removed fields.
+    await expect(
+      fs.stat(path.join(root, ".learning-moments", "config.json.bak"))
+    ).resolves.toBeTruthy();
+    const fresh = await loadConfig(root);
+    expect(fresh).not.toHaveProperty("confidence");
+    expect(fresh.ignore).not.toHaveProperty("generated_markers");
+    expect(fresh.context_limits).not.toHaveProperty("max_file_excerpt_chars");
+  });
+
+  it("leaves a valid existing config alone on rerun", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+
+    await initCommand({});
+    const before = await fs.readFile(
+      path.join(root, ".learning-moments", "config.json"),
+      "utf8"
+    );
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await initCommand({});
+    } finally {
+      log.mockRestore();
+    }
+
+    const after = await fs.readFile(
+      path.join(root, ".learning-moments", "config.json"),
+      "utf8"
+    );
+    expect(after).toBe(before);
+    await expect(
+      fs.stat(path.join(root, ".learning-moments", "config.json.bak"))
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
 
 describe("uninstallCommand", () => {

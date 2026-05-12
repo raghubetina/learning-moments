@@ -88,6 +88,21 @@ export function assertObject(value, loc) {
 }
 
 /**
+ * @param {Record<string, unknown>} obj
+ * @param {readonly string[]} allowed
+ * @param {string} loc
+ */
+export function assertNoExtraKeys(obj, allowed, loc) {
+  const allowedSet = new Set(allowed);
+  const extras = Object.keys(obj).filter((key) => !allowedSet.has(key));
+  if (extras.length > 0) {
+    throw new Error(
+      `${loc}: unknown key${extras.length > 1 ? "s" : ""} ${extras.map((k) => JSON.stringify(k)).join(", ")}`
+    );
+  }
+}
+
+/**
  * @param {unknown} value
  * @param {string} loc
  * @returns {unknown[]}

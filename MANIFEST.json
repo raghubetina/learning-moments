@@ -1,7 +1,7 @@
 {
   "name": "learning-moments",
   "version": "0.3.2",
-  "generatedAt": "2026-05-12T18:07:52.101Z",
+  "generatedAt": "2026-05-12T18:15:40.293Z",
   "files": {
     "CHANGELOG.md": "3b0e5b1e97712641c845142934a170809f223accc20fcf08015403c14f25e18c",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
@@ -17,7 +17,7 @@
     "src/commands/hooks/stop.js": "f7f21ce42a5c084c2d2d05dcb354e40c4f42b7cc3634ad881a9b08f7aa0c734f",
     "src/commands/hooks/user-prompt-expansion.js": "0f3fc722fba7fedc9d5a31078110bf53a643425a285692e8e7d8737d4618e8a8",
     "src/commands/hooks/user-prompt-submit.js": "51f2997e7e633a245dd2b1d1d6250d2d7a8c2c515982bf907eef15c8506f4528",
-    "src/commands/init.js": "e0af7f7294a67a6885c618b74dd1de4a3099353261dadabbf293e791c9dd38d6",
+    "src/commands/init.js": "4f91b624c560c07df47c2722ae151e7464c83774eca0de3ce8e7d4108530dc6f",
     "src/commands/metrics.js": "90533bffbb30055b644ee5a46e0c52b1823209eae0fa60ab380b9363bfcf173a",
     "src/commands/override.js": "5477003efb334ec3c9f90b4c3ba33a9758292c6e8c45bfa58b1dfb2b365db6a7",
     "src/commands/pause.js": "f105b3dd231ee65f9713d409d389fc5b69e3fbf33cb4213b946abc0e31e830fa",
@@ -29,7 +29,7 @@
     "src/core/classifier.js": "e12f2e7f6ee7c3865603ca3224d48e28d2cda33c5cd1b6a0b0b65d068fb47953",
     "src/core/claude-settings.js": "bdebfd6efcfa4626e57ab5bd07122bcfff3421d1983187e00ce023936f9a8b8e",
     "src/core/claude.js": "564be63d7d55b1623b9b26a795575c2d44c942468fee4ed90208f4b181d5ee6f",
-    "src/core/config.js": "6c9eebdeeaf24ab7401d60c8a2ec50291b68a8bf717a5895427dcafdd3dfeff4",
+    "src/core/config.js": "9991e7f63e9c7bf85d4e124a47163fc78f4f27dbeba65f20ac0026985ef9599e",
     "src/core/defaults.js": "26bf67fe6aa4bfdc91d1182aefce3661e4295f8ae1877fe6863b28451867810e",
     "src/core/file-utils.js": "78599c8ca19bf40b47a852436ead4192fd126c9f6270eea5fdabe5bba84a0c8a",
     "src/core/filter.js": "064605314e6832928b4a33b2b808737b55b0a29a6cf315cd46ff06dea631f777",
@@ -46,6 +46,6 @@
     "src/core/redaction.js": "70c44763b72a3fc2fe41a38e016b4d829f502b2d783cd0d1187c690736652f97",
     "src/core/state.js": "8d67ab6c1921b4c3848df8b9407daa03d27f0822673a37baa65514c808c3b81c",
     "src/core/stdin.js": "9a0861dec8d85665660803f9ab065154ee657b6fc1d8f8c46112bd35e1c0f0e2",
-    "src/core/validate.js": "335d558d0ed8e3792f5238a09d95688666b90fc17ee5ae28831ff5475f8c462e"
+    "src/core/validate.js": "8a212a8eb0ad2ac5077ead1c601c116b97c1e8f67f7d1a727a9ba6e01c00ded5"
   }
 }

@@ -91,6 +91,19 @@ describe("config", () => {
     expect(() => parseConfig(negative)).toThrow(/grader_timeout_seconds/);
   });
 
+  it("rejects unknown top-level keys", () => {
+    const bad = { ...defaultConfig, confidence: { enabled: true } };
+    expect(() => parseConfig(bad)).toThrow(/unknown key.*confidence/);
+  });
+
+  it("rejects unknown nested keys", () => {
+    const bad = {
+      ...defaultConfig,
+      ignore: { ...defaultConfig.ignore, generated_markers: ["@generated"] }
+    };
+    expect(() => parseConfig(bad)).toThrow(/ignore.*unknown key.*generated_markers/);
+  });
+
   it("rejects ignore.paths patterns using unsupported glob syntax", () => {
     const cases = [
       { pattern: "src/{a,b}/**", feature: /brace expansion/ },

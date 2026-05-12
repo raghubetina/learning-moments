@@ -8,6 +8,7 @@ import {
   assertBoolean,
   assertEnum,
   assertIntegerMin,
+  assertNoExtraKeys,
   assertObject,
   assertString
 } from "./validate.js";
@@ -110,21 +111,66 @@ function parseSessionsMap(value, loc) {
  * @param {string} [loc]
  * @returns {Config}
  */
+// Allowed key sets for each nested object. parseConfig rejects any keys not
+// listed here so old or typo'd fields don't silently get ignored. When a
+// field is removed across versions, drop it from this list; init's migration
+// path will detect existing configs that still carry it.
+const TOP_LEVEL_KEYS = [
+  "schema_version",
+  "tool_version",
+  "enabled",
+  "paused",
+  "frequency",
+  "mode",
+  "context_storage",
+  "context_limits",
+  "ignore",
+  "claude"
+];
+const PAUSED_KEYS = ["project", "sessions"];
+const FREQUENCY_KEYS = [
+  "immediate_prompts_per_hour",
+  "minimum_minutes_between_immediate_prompts",
+  "session_start_recall_limit",
+  "classifier_calls_per_hour"
+];
+const CONTEXT_LIMITS_KEYS = ["max_diff_chars", "max_paths"];
+const IGNORE_KEYS = ["paths", "extensions"];
+const CLAUDE_KEYS = [
+  "enabled",
+  "classifier_model",
+  "grading_model",
+  "classifier_timeout_seconds",
+  "grader_timeout_seconds",
+  "use_bare_when_compatible"
+];
+
+/**
+ * @param {unknown} raw
+ * @param {string} [loc]
+ * @returns {Config}
+ */
 export function parseConfig(raw, loc = "config") {
   const obj = assertObject(raw, loc);
+  assertNoExtraKeys(obj, TOP_LEVEL_KEYS, loc);
 
   if (obj.schema_version !== 1) {
     throw new Error(`${loc}.schema_version: expected 1, got ${JSON.stringify(obj.schema_version)}`);
   }
 
   const paused = assertObject(obj.paused, `${loc}.paused`);
+  assertNoExtraKeys(paused, PAUSED_KEYS, `${loc}.paused`);
   const frequency = assertObject(obj.frequency, `${loc}.frequency`);
+  assertNoExtraKeys(frequency, FREQUENCY_KEYS, `${loc}.frequency`);
   const contextLimits = assertObject(obj.context_limits, `${loc}.context_limits`);
+  assertNoExtraKeys(contextLimits, CONTEXT_LIMITS_KEYS, `${loc}.context_limits`);
   const ignore = assertObject(obj.ignore, `${loc}.ignore`);
+  assertNoExtraKeys(ignore, IGNORE_KEYS, `${loc}.ignore`);
   const claude = assertObject(obj.claude, `${loc}.claude`);
+  assertNoExtraKeys(claude, CLAUDE_KEYS, `${loc}.claude`);
 
   return {
-    schema_version: 1,
+    schema_version: /** @type {1} */ (1),
     tool_version: assertString(obj.tool_version, `${loc}.tool_version`),
     enabled: assertBoolean(obj.enabled, `${loc}.enabled`),
     paused: {
