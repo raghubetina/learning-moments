@@ -1,9 +1,9 @@
 {
   "name": "learning-moments",
-  "version": "0.2.1",
-  "generatedAt": "2026-05-12T15:26:21.058Z",
+  "version": "0.2.2",
+  "generatedAt": "2026-05-12T15:32:49.543Z",
   "files": {
-    "CHANGELOG.md": "736faaa27ea2e0ea482fe2082a0aa13c095c0474ca0409f86590d205dd12372f",
+    "CHANGELOG.md": "9a1e5bb147750f8c3658a090fadd8c81ac2fcb8ab4a8423975fdd78e44066302",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "0c50ebcae87823f68854543a788e4745e10639fda0a93de2d2f92db82d67934b",
     "src/cli.js": "959cb92cae195904181febfd606ba7d850ee28208ef47452e4ff109377595177",

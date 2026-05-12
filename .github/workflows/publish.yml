@@ -24,8 +24,16 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing's OIDC-for-publish-auth path requires npm 11+.
+      # Node 22's bundled npm is sometimes 10.x in older point releases;
+      # upgrading explicitly makes the dependency obvious and avoids a
+      # silent fallback to token auth (which presents an empty placeholder
+      # token and yields a 404 from the registry).
+      - name: Upgrade npm for Trusted Publishing support
+        run: npm install -g npm@latest
 
       - name: Install dependencies without running lifecycle scripts
         run: npm ci --ignore-scripts
