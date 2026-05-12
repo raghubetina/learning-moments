@@ -4,6 +4,10 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/release-verify.js`: packs the project, installs the tarball into a throwaway consumer project, and runs `learning-moments audit` against the installed copy. Catches packaging-shaped bugs that the in-repo audit cannot see — a file referenced by code but missing from `package.json` `files`, executable bits stripped during pack, manifest drift. Wired into the `release` npm script and into the publish workflow (after `npm pack --dry-run`, before `npm publish`), so a release tag that would produce a broken tarball now fails CI before the tarball reaches the registry.
+
 ## [0.3.0] - 2026-05-12
 
 This release tightens the trust story (package.json now integrity-checked, user answers now redacted before logging or grading), closes several reliability and privacy gaps surfaced by a deep audit (silent hook failures, stale locks, snapshot work on paused projects), and removes aspirational config that no runtime code read.

@@ -20,7 +20,8 @@
     "test": "vitest run",
     "audit": "node src/cli.js audit",
     "build-manifest": "node scripts/build-manifest.js",
-    "release": "node scripts/build-manifest.js && vitest run && npm pack --dry-run"
+    "release-verify": "node scripts/release-verify.js",
+    "release": "node scripts/build-manifest.js && vitest run && node src/cli.js audit && node scripts/release-verify.js"
   },
   "keywords": [
     "claude-code",

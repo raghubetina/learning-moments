@@ -49,5 +49,13 @@ jobs:
       - name: Show what will be packed
         run: npm pack --dry-run
 
+      # Pack the tarball, install it into a throwaway consumer project,
+      # and run `learning-moments audit` against the installed copy. This
+      # catches packaging bugs the in-repo audit can't see — files
+      # referenced by code but missing from `package.json` `files`,
+      # executable bits stripped during pack, MANIFEST.json drift, and so on.
+      - name: Verify packed tarball installs and audits cleanly
+        run: npm run release-verify
+
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
