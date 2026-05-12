@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
 import { changedSinceBaseline, contextForFiles, snapshot } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
+import { settingsArgument } from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
 import { appendEvent, readEvents } from "../src/core/log.js";
-import { configPath, dataDir, locksDir } from "../src/core/paths.js";
+import { configPath, dataDir, locksDir, noHooksSettingsPath } from "../src/core/paths.js";
 import { redactSecrets } from "../src/core/redaction.js";
 
 async function tempDir() {
@@ -126,6 +127,44 @@ describe("redaction", () => {
     expect(result.text).toContain("[REDACTED_ANTHROPIC_KEY");
     expect(result.text).toContain("hash=");
     expect(result.findings[0]?.type).toBe("ANTHROPIC_KEY");
+  });
+});
+
+describe("settingsArgument (no-hooks settings file)", () => {
+  async function writeSettings(root, contents) {
+    await fs.mkdir(dataDir(root), { recursive: true });
+    await fs.writeFile(noHooksSettingsPath(root), contents);
+  }
+
+  const INLINE = JSON.stringify({ disableAllHooks: true });
+
+  it("returns the file path when the file contains disableAllHooks: true", async () => {
+    const root = await tempDir();
+    await writeSettings(root, JSON.stringify({ disableAllHooks: true }));
+    expect(await settingsArgument(root)).toBe(noHooksSettingsPath(root));
+  });
+
+  it("falls back to inline JSON when the file is missing", async () => {
+    const root = await tempDir();
+    expect(await settingsArgument(root)).toBe(INLINE);
+  });
+
+  it("falls back to inline JSON when the file is unparseable", async () => {
+    const root = await tempDir();
+    await writeSettings(root, "{ not valid json");
+    expect(await settingsArgument(root)).toBe(INLINE);
+  });
+
+  it("falls back to inline JSON when disableAllHooks is false", async () => {
+    const root = await tempDir();
+    await writeSettings(root, JSON.stringify({ disableAllHooks: false }));
+    expect(await settingsArgument(root)).toBe(INLINE);
+  });
+
+  it("falls back to inline JSON when the disableAllHooks field is missing", async () => {
+    const root = await tempDir();
+    await writeSettings(root, JSON.stringify({ hooks: {} }));
+    expect(await settingsArgument(root)).toBe(INLINE);
   });
 });
 

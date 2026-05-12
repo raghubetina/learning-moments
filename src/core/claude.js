@@ -6,17 +6,31 @@ import { noHooksSettingsPath } from "./paths.js";
 const execFileAsync = promisify(execFile);
 
 // The no-hooks settings file is written by `learning-moments init` at a
-// fixed path inside the project's `.learning-moments/` directory. If it's
-// somehow missing at runtime, fall back to passing the settings JSON inline
-// rather than failing the nested call.
-async function settingsArgument(projectRoot) {
+// fixed path inside the project's `.learning-moments/` directory. We pass
+// the path to `claude -p --settings` only when the file is present AND
+// contains `{disableAllHooks: true}`. Three failure modes — missing,
+// unparseable, or contents that wouldn't actually disable hooks — all fall
+// back to passing the JSON inline. That keeps nested `claude -p` calls from
+// recursively firing our hooks even when the file on disk has been
+// corrupted or tampered with.
+//
+// Exported for testing.
+/**
+ * @param {string} projectRoot
+ * @returns {Promise<string>}
+ */
+export async function settingsArgument(projectRoot) {
   const candidate = noHooksSettingsPath(projectRoot);
   try {
-    await fs.access(candidate);
-    return candidate;
+    const text = await fs.readFile(candidate, "utf8");
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && parsed.disableAllHooks === true) {
+      return candidate;
+    }
   } catch {
-    return JSON.stringify({ disableAllHooks: true });
+    // ENOENT, unparseable JSON, or any read error — fall through to inline
   }
+  return JSON.stringify({ disableAllHooks: true });
 }
 
 function parseJsonFromText(text) {
