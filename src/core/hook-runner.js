@@ -1,3 +1,4 @@
+// @ts-check
 import { findGitRoot } from "./git.js";
 import { appendEvent } from "./log.js";
 
@@ -7,6 +8,10 @@ import { appendEvent } from "./log.js";
 // best-effort record a `hook_error` event before exiting 0. A failure to
 // record is itself swallowed so the contract holds even when the log is
 // the thing that's broken.
+/**
+ * @param {string} eventName
+ * @param {() => Promise<unknown>} action
+ */
 export async function runHook(eventName, action) {
   const startedAt = Date.now();
   try {

@@ -1,5 +1,18 @@
+// @ts-check
 import { createHash } from "node:crypto";
 
+/**
+ * @typedef {Object} RedactionFinding
+ * @property {string} type
+ * @property {string} hash
+ * @property {number} length
+ *
+ * @typedef {Object} RedactionResult
+ * @property {string} text
+ * @property {RedactionFinding[]} findings
+ */
+
+/** @type {ReadonlyArray<{type: string, pattern: RegExp}>} */
 const rules = [
   {
     type: "PEM_PRIVATE_KEY",
@@ -39,11 +52,17 @@ const rules = [
   }
 ];
 
+/** @param {string} value */
 function hashValue(value) {
   return createHash("sha256").update(value).digest("hex").slice(0, 8);
 }
 
+/**
+ * @param {string} input
+ * @returns {RedactionResult}
+ */
 export function redactSecrets(input) {
+  /** @type {RedactionFinding[]} */
   const findings = [];
   let text = input;
 

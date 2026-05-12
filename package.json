@@ -18,10 +18,11 @@
   ],
   "scripts": {
     "test": "vitest run",
+    "check": "tsc --noEmit",
     "audit": "node src/cli.js audit",
     "build-manifest": "node scripts/build-manifest.js",
     "release-verify": "node scripts/release-verify.js",
-    "release": "node scripts/build-manifest.js && vitest run && node src/cli.js audit && node scripts/release-verify.js"
+    "release": "node scripts/build-manifest.js && tsc --noEmit && vitest run && node src/cli.js audit && node scripts/release-verify.js"
   },
   "keywords": [
     "claude-code",
@@ -42,6 +43,8 @@
   },
   "homepage": "https://github.com/raghubetina/learning-moments#readme",
   "devDependencies": {
+    "@types/node": "^25.7.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   }
 }

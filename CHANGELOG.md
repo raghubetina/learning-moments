@@ -7,6 +7,7 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 ### Added
 
 - `scripts/release-verify.js`: packs the project, installs the tarball into a throwaway consumer project, and runs `learning-moments audit` against the installed copy. Catches packaging-shaped bugs that the in-repo audit cannot see — a file referenced by code but missing from `package.json` `files`, executable bits stripped during pack, manifest drift. Wired into the `release` npm script and into the publish workflow (after `npm pack --dry-run`, before `npm publish`), so a release tag that would produce a broken tarball now fails CI before the tarball reaches the registry.
+- Type checking via JSDoc + `tsc --noEmit`. The CLI ships as plain JavaScript exactly as before — no compile step, no `dist/` — but the source files in `src/core/` now carry JSDoc annotations on exports and shared data shapes (`Config`, `EventRecord`, the hook input types). A new `npm run check` runs the TypeScript compiler in no-emit mode against the JS sources; `npm run release` runs it as part of the pre-publish gate. The config-validation regression fixed in 8a45560 is exactly the bug class this catches at edit time. Initial coverage: `validate.js`, `config.js`, `log.js`, `hook-input.js`, `redaction.js`, `paths.js`, `hook-runner.js`. Remaining modules can be annotated incrementally; files without `// @ts-check` are still skipped.
 
 ## [0.3.0] - 2026-05-12
 

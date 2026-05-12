@@ -1,3 +1,4 @@
+// @ts-check
 import fs from "node:fs/promises";
 import { unsupportedGlobFeature } from "./filter.js";
 import { configPath } from "./paths.js";
@@ -11,15 +12,70 @@ import {
   assertString
 } from "./validate.js";
 
+/**
+ * @typedef {"active" | "observe_only"} Mode
+ * @typedef {"metadata_only" | "excerpts" | "full"} ContextStorage
+ *
+ * @typedef {Object} ConfigFrequency
+ * @property {number} immediate_prompts_per_hour
+ * @property {number} minimum_minutes_between_immediate_prompts
+ * @property {number} session_start_recall_limit
+ * @property {number} classifier_calls_per_hour
+ *
+ * @typedef {Object} ConfigContextLimits
+ * @property {number} max_diff_chars
+ * @property {number} max_paths
+ *
+ * @typedef {Object} ConfigIgnore
+ * @property {string[]} paths
+ * @property {string[]} extensions
+ *
+ * @typedef {Object} ConfigPaused
+ * @property {boolean} project
+ * @property {Record<string, boolean>} sessions
+ *
+ * @typedef {Object} ConfigClaude
+ * @property {boolean} enabled
+ * @property {string} classifier_model
+ * @property {string} grading_model
+ * @property {number} classifier_timeout_seconds
+ * @property {number} grader_timeout_seconds
+ * @property {boolean} use_bare_when_compatible
+ *
+ * @typedef {Object} Config
+ * @property {1} schema_version
+ * @property {string} tool_version
+ * @property {boolean} enabled
+ * @property {ConfigPaused} paused
+ * @property {ConfigFrequency} frequency
+ * @property {Mode} mode
+ * @property {ContextStorage} context_storage
+ * @property {ConfigContextLimits} context_limits
+ * @property {ConfigIgnore} ignore
+ * @property {ConfigClaude} claude
+ */
+
+/** @type {readonly ContextStorage[]} */
 const CONTEXT_STORAGE = ["metadata_only", "excerpts", "full"];
+/** @type {readonly Mode[]} */
 const MODES = ["active", "observe_only"];
 
+/**
+ * @param {unknown} value
+ * @param {string} loc
+ * @returns {string[]}
+ */
 function parseStringArray(value, loc) {
   const arr = assertArray(value, loc);
   arr.forEach((item, i) => assertString(item, `${loc}[${i}]`));
-  return arr;
+  return /** @type {string[]} */ (arr);
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} loc
+ * @returns {string[]}
+ */
 function parseIgnorePaths(value, loc) {
   const arr = parseStringArray(value, loc);
   arr.forEach((pattern, i) => {
@@ -34,8 +90,14 @@ function parseIgnorePaths(value, loc) {
   return arr;
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} loc
+ * @returns {Record<string, boolean>}
+ */
 function parseSessionsMap(value, loc) {
   const obj = assertObject(value, loc);
+  /** @type {Record<string, boolean>} */
   const out = {};
   for (const [key, val] of Object.entries(obj)) {
     out[key] = assertBoolean(val, `${loc}.${key}`);
@@ -43,6 +105,11 @@ function parseSessionsMap(value, loc) {
   return out;
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} [loc]
+ * @returns {Config}
+ */
 export function parseConfig(raw, loc = "config") {
   const obj = assertObject(raw, loc);
 
@@ -122,6 +189,7 @@ export function parseConfig(raw, loc = "config") {
   };
 }
 
+/** @type {Config} */
 export const defaultConfig = {
   schema_version: 1,
   tool_version: packageVersion(),
@@ -156,11 +224,19 @@ export const defaultConfig = {
   }
 };
 
+/**
+ * @param {string} projectRoot
+ * @returns {Promise<Config>}
+ */
 export async function loadConfig(projectRoot) {
   const raw = await fs.readFile(configPath(projectRoot), "utf8");
   return parseConfig(JSON.parse(raw));
 }
 
+/**
+ * @param {string} projectRoot
+ * @param {Config} config
+ */
 export async function writeConfig(projectRoot, config) {
   await fs.writeFile(configPath(projectRoot), `${JSON.stringify(config, null, 2)}\n`);
 }
