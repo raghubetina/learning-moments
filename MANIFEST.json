@@ -1,9 +1,9 @@
 {
   "name": "learning-moments",
   "version": "0.2.3",
-  "generatedAt": "2026-05-12T16:28:54.423Z",
+  "generatedAt": "2026-05-12T16:31:19.887Z",
   "files": {
-    "CHANGELOG.md": "fc2dbc638c83e6c0aa8f119448c44d7a3194e560e9f5ec11cb3b48e607a0003b",
+    "CHANGELOG.md": "649b3507f841def6c40c2f76c664971d7dc1c050fd2a8f614c8253dd5c095b70",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "0c50ebcae87823f68854543a788e4745e10639fda0a93de2d2f92db82d67934b",
     "package.json": "b2ca48e8a97dd734dc9dbdbe8819a4bdb6059986cfb2afc16ae6cda53016dedb",
@@ -11,7 +11,7 @@
     "src/commands/audit.js": "78a6897346be891c54c1216bb9d73c0162440f357a9c8028c316a15556d471a3",
     "src/commands/delete-data.js": "e571e0334685c83e15fe7a19aa07f4b1a3b9021c72640178ee15e2d3eced16ef",
     "src/commands/doctor.js": "d4407e30a0db3236d72a8b16f8354e4088604c52bb08ce1c728e83463ecac94f",
-    "src/commands/hooks/post-tool-batch.js": "ea7334d3149ace8f548d858047c445fc5823d582f51408039ca7b404d4dd2c29",
+    "src/commands/hooks/post-tool-batch.js": "3553f31d7d4abda3eef8470e56cd3bc569961e967aff0388205adcef172d71df",
     "src/commands/hooks/post-tool-use.js": "6bd429ddc6d4c6111ee6c732b5ee5e61cf9bd914f831eefe76b391ef33c26e3e",
     "src/commands/hooks/session-start.js": "5bd3a53f0ddbba28e32b2465c35290e154a34fadadc445a866d46b25d57b0ba1",
     "src/commands/hooks/stop.js": "f7f21ce42a5c084c2d2d05dcb354e40c4f42b7cc3634ad881a9b08f7aa0c734f",

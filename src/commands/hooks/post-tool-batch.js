@@ -3,7 +3,7 @@ import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
 import { candidateFiles } from "../../core/filter.js";
-import { changedSinceBaseline, contextForFiles, snapshot } from "../../core/git.js";
+import { changedSinceBaseline, contextForFiles, findGitRoot, snapshot } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readEvents } from "../../core/log.js";
@@ -17,8 +17,10 @@ export async function postToolBatchHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parsePostToolBatchInput(input);
-  const current = snapshot(parsed.cwd);
-  const projectRoot = current.root;
+  // Resolve the project root cheaply (one git rev-parse) so we can short-
+  // circuit on pause/disabled before incurring the expense of a full
+  // working-tree snapshot, which hashes every dirty and untracked file.
+  const projectRoot = findGitRoot(parsed.cwd);
   const complete = async (outcome, extra = {}) => {
     await appendEvent(projectRoot, {
       type: "hook_completed",
@@ -44,6 +46,10 @@ export async function postToolBatchHook(input) {
     await complete("classifier_budget_exhausted");
     return null;
   }
+
+  // Defer the working-tree snapshot until after every early-return path so
+  // that disabled, paused, or budget-exhausted invocations never pay its cost.
+  const current = snapshot(parsed.cwd);
 
   const baseline = latestSessionBaseline(events, parsed.session_id) ?? {
     root: projectRoot,
