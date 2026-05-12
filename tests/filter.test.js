@@ -33,8 +33,7 @@ describe("matchGlob", () => {
 const baseConfig = {
   ignore: {
     paths: ["dist/**", "coverage/**", "node_modules/**"],
-    extensions: [".lock"],
-    generated_markers: []
+    extensions: [".lock"]
   }
 };
 

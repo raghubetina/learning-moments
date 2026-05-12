@@ -54,7 +54,6 @@ export function parseConfig(raw, loc = "config") {
   const frequency = assertObject(obj.frequency, `${loc}.frequency`);
   const contextLimits = assertObject(obj.context_limits, `${loc}.context_limits`);
   const ignore = assertObject(obj.ignore, `${loc}.ignore`);
-  const confidence = assertObject(obj.confidence, `${loc}.confidence`);
   const claude = assertObject(obj.claude, `${loc}.claude`);
 
   return {
@@ -95,26 +94,11 @@ export function parseConfig(raw, loc = "config") {
         0,
         `${loc}.context_limits.max_diff_chars`
       ),
-      max_file_excerpt_chars: assertIntegerMin(
-        contextLimits.max_file_excerpt_chars,
-        0,
-        `${loc}.context_limits.max_file_excerpt_chars`
-      ),
-      max_transcript_excerpt_chars: assertIntegerMin(
-        contextLimits.max_transcript_excerpt_chars,
-        0,
-        `${loc}.context_limits.max_transcript_excerpt_chars`
-      ),
       max_paths: assertIntegerMin(contextLimits.max_paths, 0, `${loc}.context_limits.max_paths`)
     },
     ignore: {
       paths: parseIgnorePaths(ignore.paths, `${loc}.ignore.paths`),
-      extensions: parseStringArray(ignore.extensions, `${loc}.ignore.extensions`),
-      generated_markers: parseStringArray(ignore.generated_markers, `${loc}.ignore.generated_markers`)
-    },
-    confidence: {
-      enabled: assertBoolean(confidence.enabled, `${loc}.confidence.enabled`),
-      ask_when_useful: assertBoolean(confidence.ask_when_useful, `${loc}.confidence.ask_when_useful`)
+      extensions: parseStringArray(ignore.extensions, `${loc}.ignore.extensions`)
     },
     claude: {
       enabled: claude.enabled === undefined ? true : assertBoolean(claude.enabled, `${loc}.claude.enabled`),
@@ -157,18 +141,11 @@ export const defaultConfig = {
   context_storage: "excerpts",
   context_limits: {
     max_diff_chars: 12000,
-    max_file_excerpt_chars: 8000,
-    max_transcript_excerpt_chars: 4000,
     max_paths: 20
   },
   ignore: {
     paths: ["dist/**", "coverage/**", "node_modules/**"],
-    extensions: [".lock"],
-    generated_markers: ["@generated", "DO NOT EDIT"]
-  },
-  confidence: {
-    enabled: true,
-    ask_when_useful: true
+    extensions: [".lock"]
   },
   claude: {
     enabled: true,
