@@ -4,6 +4,10 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-12
+
+Two follow-up commits on the feedback-4 and feedback-5 audit notes. Mostly internal improvements; no on-disk format changes. The default config gains some secret-path ignores, so users who re-run `learning-moments init` after upgrading get a stronger first-line privacy filter (the existing pattern-based redactor is still in place for content that does reach the diff pipeline).
+
 ### Changed
 
 - `PostToolBatch` no longer holds the `moment-claim` lock across the classifier call. Phase 1 acquires the lock briefly to read control events, check dedupe by fingerprint, and write `classifier_called` (the claim row). The lock is released before `classifyCandidate` runs. Phase 2 reacquires the lock around `moment_created` + budget read + `moment_injected` / `moment_silenced` so the inject/silence decision is still atomic against other in-flight injections. The previous single-lock structure could make a concurrent hook fail-open just because one Claude model call was in flight (default 45s classifier timeout vs. 5s lock acquisition timeout); the slow path now serializes only on the fingerprint dedupe, not on the model call.
