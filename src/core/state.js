@@ -14,7 +14,7 @@ export function pendingInjectedMoment(events, sessionId) {
   const closed = new Set();
   for (const event of events) {
     const momentId = typeof event.moment_id === "string" ? event.moment_id : undefined;
-    if (momentId && ["answer_received", "skip_recorded"].includes(event.type)) {
+    if (momentId && ["answer_received", "skip_recorded", "moment_injection_missed"].includes(event.type)) {
       closed.add(momentId);
     }
   }
@@ -44,7 +44,7 @@ export function pendingFeedbackMoment(events, sessionId) {
   const observed = new Set();
   for (const event of events) {
     const momentId = typeof event.moment_id === "string" ? event.moment_id : undefined;
-    if (momentId && event.type === "feedback_observed") {
+    if (momentId && ["feedback_observed", "feedback_injection_missed"].includes(event.type)) {
       observed.add(momentId);
     }
   }

@@ -4,6 +4,15 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-06-18
+
+Patch release fixing two data-integrity bugs surfaced by a full-codebase review. No on-disk format change beyond telemetry moving to its own file.
+
+### Fixed
+
+- **Migration crash could permanently destroy the ledger.** `logPath()` (the pre-migration unified log) and `telemetryPath()` (post-migration Class C) both resolved to `moments.jsonl`, so the migration's final rename overwrote its own source with the telemetry-only subset. If the process was killed after that rename but before the `.migration-complete` marker was written, the next `init` re-read the now-telemetry-only file and overwrote the populated `ledger.jsonl`/`control.jsonl` with empty staging — silently erasing durable events (`moment_created`, `answer_received`, `grade_created`, …). Telemetry now lives in its own `telemetry.jsonl`, so migration never overwrites its source; the legacy log is unlinked only after the marker is durable, leaving any crash mid-migration in a clean, fully retryable state.
+- **Missed-injection events flooded the ledger every Stop.** `pendingFeedbackMoment` only treated `feedback_observed` as closing a moment, and `pendingInjectedMoment` only `answer_received`/`skip_recorded`. The negative outcomes `feedback_injection_missed` and `moment_injection_missed` (both `ledger`-class, retained forever) never closed the moment, so once a Stop logged one, every subsequent Stop in the session re-evaluated the same pending moment and appended another row. Both negative outcomes now close the moment, capping each at one row.
+
 ## [0.5.2] - 2026-05-12
 
 Patch release. Slash command descriptions are now user-facing instead of prompt-to-Claude text, and `init` clobbers slash command files on every run so changes to defaults land without manual cleanup.

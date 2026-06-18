@@ -6,8 +6,9 @@ import { dataDir, migrationCompletePath, telemetryPath } from "../core/paths.js"
 /**
  * Truncate the telemetry log (Class C) without touching the durable ledger
  * or the hot-path control file. Refuses if the project hasn't been migrated
- * yet — pre-migration the file at this path is the unified log and would
- * take ledger rows down with it.
+ * yet — pre-migration telemetry still lives mixed into the unified log, so
+ * there is no standalone telemetry file to truncate and we must not touch
+ * the unified log (it holds ledger rows too).
  *
  * Takes the `moments-jsonl` lock so the truncate serializes against any
  * in-flight `appendEvent` calls.
@@ -27,7 +28,7 @@ async function truncateTelemetry(projectRoot) {
   await withProjectLock(projectRoot, "moments-jsonl", async () => {
     await fs.writeFile(telemetryPath(projectRoot), "");
   });
-  console.log("Truncated telemetry log (moments.jsonl). Ledger and control logs untouched.");
+  console.log("Truncated telemetry log (telemetry.jsonl). Ledger and control logs untouched.");
 }
 
 /**

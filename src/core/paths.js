@@ -19,10 +19,11 @@ export function profilePath(projectRoot) {
 }
 
 /**
- * Path for the unified pre-migration log and for post-migration Class C
- * telemetry. Same file in both cases — migration overwrites it in place
- * to contain only telemetry rows. See `telemetryPath` for the
- * post-migration alias.
+ * Path for the unified pre-migration log. Migration reads this file,
+ * partitions it into the three class files, and deletes it once the
+ * `.migration-complete` marker is written. Nothing reads it afterward.
+ * Kept distinct from `telemetryPath` so migration never overwrites its
+ * own source — a crash mid-migration leaves it intact for a clean retry.
  *
  * @param {string} projectRoot
  */
@@ -53,12 +54,14 @@ export function controlPath(projectRoot) {
 
 /**
  * Path for disposable telemetry (Class C). Truncatable any time via
- * `learning-moments delete-data --logs-only`.
+ * `learning-moments delete-data --logs-only`. Distinct from the legacy
+ * unified log (`logPath`) so migration writes here without clobbering its
+ * source.
  *
  * @param {string} projectRoot
  */
 export function telemetryPath(projectRoot) {
-  return path.join(dataDir(projectRoot), "moments.jsonl");
+  return path.join(dataDir(projectRoot), "telemetry.jsonl");
 }
 
 /**

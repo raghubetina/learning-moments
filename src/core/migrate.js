@@ -10,10 +10,12 @@ import { controlPath, ledgerPath, logPath, migrationCompletePath, telemetryPath 
  * split. Idempotent — does nothing once `.migration-complete` exists.
  *
  * Strategy: write each class to a `.staging` sibling, then rename atomically
- * over the destination. The unified log lives at the same path as the
- * post-migration telemetry file, so the final rename overwrites it with the
- * telemetry-only subset. The migration marker is written last; until it
- * appears, every reader and writer continues to use the unified file.
+ * over the destination. Telemetry has its own file (`telemetry.jsonl`),
+ * distinct from the legacy unified log, so migration never overwrites its
+ * own source. The marker is written before the legacy log is unlinked;
+ * until the marker appears the legacy file stays intact, so a crash at any
+ * point leaves a clean, fully retryable state. Until the marker exists,
+ * every reader and writer continues to use the unified file.
  *
  * Takes the `moments-jsonl` lock — the same lock `appendEvent`, control
  * pruning, and telemetry truncation use — so a hook can't append to the
@@ -91,6 +93,16 @@ export async function migrateLegacyLog(projectRoot) {
       source_total: ledgerLines.length + controlLines.length + telemetryLines.length
     };
     await fs.writeFile(migrationCompletePath(projectRoot), `${JSON.stringify(marker, null, 2)}\n`);
+
+    // The legacy unified log is now fully partitioned and the marker is
+    // durable, so nothing reads it anymore. Remove it. A crash before this
+    // point leaves it intact for a clean retry; a crash after is a no-op
+    // (the marker already short-circuits re-migration).
+    try {
+      await fs.unlink(logPath(projectRoot));
+    } catch {
+      // already gone (no legacy log, or removed by a prior run) — fine
+    }
 
     // Invalidate the per-process cache so subsequent reads/writes pick up
     // the marker. Matters for tests and for the `init` command, which
