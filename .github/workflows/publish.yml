@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout the tagged commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Node 24 ships with npm 11+, which is required for Trusted
       # Publishing's OIDC-for-publish-auth path. Earlier Node majors
