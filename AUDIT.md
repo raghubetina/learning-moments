@@ -1,6 +1,6 @@
 # Code audit
 
-This audit covers Learning Moments `0.5.4` as reviewed on 2026-07-10. It examined the shipped source, hook lifecycle, local storage, model-call isolation, privacy boundaries, release pipeline, dependency tree, and test suite.
+This audit covers Learning Moments `0.5.5` as reviewed on 2026-07-10. It examined the shipped source, hook lifecycle, local storage, model-call isolation, privacy boundaries, release pipeline, dependency tree, and test suite. The `0.5.5` follow-up changes documentation only; its runtime is identical to `0.5.4`.
 
 ## Executive assessment
 

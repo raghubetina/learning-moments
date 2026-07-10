@@ -4,6 +4,16 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-07-10
+
+Documentation-only patch clarifying the product's user-control design.
+
+### Changed
+
+- Elevated time, token, and estimated-cost visibility as a product principle.
+- Documented the one-command pause and resume path for uninterrupted work.
+- Made explicit that the learning profile, selection policy, and grading rubric can be changed by editing Markdown, with no rebuild or restart.
+
 ## [0.5.4] - 2026-07-10
 
 Patch release improving project transparency, privacy hardening, static coverage, and release safety.
@@ -221,7 +231,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/raghubetina/learning-moments/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/raghubetina/learning-moments/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/raghubetina/learning-moments/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/raghubetina/learning-moments/compare/v0.5.1...v0.5.2

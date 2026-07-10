@@ -1,6 +1,6 @@
 {
   "name": "learning-moments",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Brief, situated comprehension checks for AI-assisted changes in Claude Code.",
   "type": "module",
   "bin": {
