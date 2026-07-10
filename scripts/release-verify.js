@@ -28,26 +28,34 @@ async function run(cmd, args, cwd) {
 
 async function main() {
   const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-release-verify-"));
+  const npmCache = path.join(stagingDir, "npm-cache");
   log(`staging dir: ${stagingDir}`);
 
   try {
     log("packing...");
     const pack = await run(
       "npm",
-      ["pack", "--pack-destination", stagingDir, "--ignore-scripts"],
+      ["pack", "--pack-destination", stagingDir, "--ignore-scripts", "--cache", npmCache],
       ROOT
     );
     // npm pack prints the tarball filename on its last non-empty line of stdout.
     const tarballName = pack.stdout.trim().split(/\r?\n/).pop();
+    if (!tarballName) {
+      throw new Error("npm pack did not report a tarball filename");
+    }
     const tarballPath = path.join(stagingDir, tarballName);
     log(`packed: ${tarballName}`);
 
     const consumerDir = path.join(stagingDir, "consumer");
     await fs.mkdir(consumerDir);
-    await run("npm", ["init", "-y"], consumerDir);
+    await run("npm", ["init", "-y", "--cache", npmCache], consumerDir);
 
     log("installing tarball into consumer project...");
-    await run("npm", ["install", "--ignore-scripts", tarballPath], consumerDir);
+    await run(
+      "npm",
+      ["install", "--ignore-scripts", tarballPath, "--cache", npmCache],
+      consumerDir
+    );
 
     // Exec the installed CLI directly. Going through `npx` is fragile because
     // npx parses flags like `--version` itself before passing them along; the
@@ -65,8 +73,11 @@ async function main() {
     const versionOut = await run("node", [installedCli, "--version"], consumerDir);
     const reportedVersion = versionOut.stdout.trim();
     log(`installed version reports: ${reportedVersion}`);
-    if (!/^\d+\.\d+\.\d+/.test(reportedVersion)) {
-      throw new Error(`--version did not return a semver-shaped string: ${reportedVersion}`);
+    const pkg = JSON.parse(await fs.readFile(path.join(ROOT, "package.json"), "utf8"));
+    if (reportedVersion !== pkg.version) {
+      throw new Error(
+        `installed CLI version ${reportedVersion} does not match package.json ${pkg.version}`
+      );
     }
 
     log("running audit against installed CLI...");

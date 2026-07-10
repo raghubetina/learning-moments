@@ -8,34 +8,42 @@ on:
 # Required for npm Trusted Publishing OIDC exchange. The publish job
 # exchanges this token with the npm registry for a short-lived publish
 # credential; no long-lived NPM_TOKEN is stored in the repo.
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   publish:
     name: Build, verify, and publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout the tagged commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Node 24 ships with npm 11+, which is required for Trusted
       # Publishing's OIDC-for-publish-auth path. Earlier Node majors
       # ship with npm 10, which silently falls back to token auth and
       # fails with 404 against the registry.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Print npm version for diagnostics
         run: npm --version
 
       - name: Install dependencies without running lifecycle scripts
         run: npm ci --ignore-scripts
+
+      - name: Verify tag matches package version
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+
+      - name: Type check
+        run: npm run check
 
       - name: Run the test suite
         run: npm test
@@ -59,3 +67,21 @@ jobs:
 
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
+
+  release:
+    name: Create GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create release from the published tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          --verify-tag
+          --generate-notes
+          --title "$GITHUB_REF_NAME"

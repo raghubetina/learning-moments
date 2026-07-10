@@ -52,15 +52,28 @@ async function readHookJson() {
   return raw.trim().length > 0 ? JSON.parse(raw) : {};
 }
 
+/** @typedef {string | boolean | (string | boolean)[] | undefined} ParsedValue */
+
+/**
+ * Keep Node's option-schema validation while exposing a practical value map
+ * to this small hand-written dispatcher.
+ *
+ * @param {string[]} args
+ * @param {import("node:util").ParseArgsConfig["options"]} schema
+ */
 function parse(args, schema) {
-  return parseArgs({
+  const parsed = parseArgs({
     args,
     allowPositionals: true,
     options: schema
   });
+  return {
+    ...parsed,
+    values: /** @type {Record<string, ParsedValue>} */ (parsed.values)
+  };
 }
 
-const dispatch = {
+const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} */ ({
   async init(args) {
     const { values } = parse(args, {
       shared: { type: "boolean" },
@@ -129,7 +142,7 @@ const dispatch = {
     const { values } = parse(args, {
       "logs-only": { type: "boolean" }
     });
-    await deleteDataCommand({ logsOnly: values["logs-only"] });
+    await deleteDataCommand({ logsOnly: values["logs-only"] === true });
   },
 
   async audit(args) {
@@ -151,7 +164,7 @@ const dispatch = {
       if (!args[0]) {
         throw new Error("hook requires an event name");
       }
-      const handlers = {
+      const handlers = /** @type {Record<string, () => Promise<void>>} */ ({
         "post-tool-use": async () => {
           await postToolUseHook(await readHookJson());
         },
@@ -172,7 +185,7 @@ const dispatch = {
         "session-start": async () => {
           await sessionStartHook(await readHookJson());
         }
-      };
+      });
       const handler = handlers[action];
       if (!handler) {
         throw new Error(`unknown hook event: ${action}`);
@@ -180,8 +193,9 @@ const dispatch = {
       await handler();
     });
   }
-};
+});
 
+/** @param {string[]} argv */
 async function main(argv) {
   const args = argv.slice(2);
   const first = args[0];

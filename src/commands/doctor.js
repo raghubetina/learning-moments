@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -6,15 +7,14 @@ import { settingsPath } from "../core/claude-settings.js";
 import { loadConfig } from "../core/config.js";
 import { pathExists } from "../core/file-utils.js";
 import { findGitRoot } from "../core/git.js";
-import { dataDir, logPath, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
+import { dataDir, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
 import { cliPath } from "../core/path-self.js";
 
 const execFileAsync = promisify(execFile);
 
-async function writable(filePath) {
+export async function writableDirectory(directoryPath) {
   try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.appendFile(filePath, "");
+    await fs.access(directoryPath, constants.W_OK);
     return true;
   } catch {
     return false;
@@ -81,7 +81,10 @@ export async function doctorCommand() {
       (await pathExists(settingsPath(projectRoot, false))) ||
       (await pathExists(settingsPath(projectRoot, true)))
   });
-  checks.push({ name: "Can write local log", ok: await writable(logPath(projectRoot)) });
+  checks.push({
+    name: "Can write local data directory",
+    ok: await writableDirectory(dataDir(projectRoot))
+  });
 
   for (const check of checks) {
     const optional = check.name.includes("informational");

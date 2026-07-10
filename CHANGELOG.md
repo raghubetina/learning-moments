@@ -4,6 +4,31 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-07-10
+
+Patch release improving project transparency, privacy hardening, static coverage, and release safety.
+
+### Added
+
+- Added a public code-audit record, security policy, contribution guide, citation metadata, and Dependabot coverage for npm and GitHub Actions.
+- Future tag releases now create a GitHub Release after npm publication succeeds.
+
+### Changed
+
+- Rewrote the README around the product's situated-learning rationale, with a shorter onboarding path, an honest alpha/latency statement, an architecture walkthrough, corrected storage documentation, and explicit privacy boundaries.
+- Expanded `npm run check` from nine explicitly annotated modules to all production source and release scripts. Node type definitions now track the declared Node 20 runtime floor.
+- Updated Vitest and its transitive Vite/esbuild dependencies to versions with no known npm audit findings.
+- Hardened the default selector and grader instructions against following instructions embedded in diffs or answers.
+
+### Fixed
+
+- Context collection no longer follows untracked symbolic links, preventing a repository symlink from pulling an arbitrary outside file into classifier context.
+- Installed `UserPromptSubmit` hooks now declare a 60-second timeout. Previously Claude Code could terminate the containing hook at its 30-second default before the 45-second grader reached its own clean fail-open timeout.
+- `learning-moments doctor` now checks data-directory permissions without recreating the retired pre-migration `moments.jsonl` file.
+- Packed-release verification now requires the installed CLI version to exactly match `package.json` rather than accepting any semver-shaped output.
+- Packed-release verification now uses an isolated temporary npm cache instead of inheriting user-level cache permissions or state.
+- The npm publish job now runs type checking and rejects a Git tag that does not match the package version.
+
 ## [0.5.3] - 2026-06-18
 
 Patch release fixing two data-integrity bugs surfaced by a full-codebase review. No on-disk format change beyond telemetry moving to its own file.
@@ -196,7 +221,12 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/raghubetina/learning-moments/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/raghubetina/learning-moments/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/raghubetina/learning-moments/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/raghubetina/learning-moments/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/raghubetina/learning-moments/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/raghubetina/learning-moments/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/raghubetina/learning-moments/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/raghubetina/learning-moments/compare/v0.3.0...v0.3.1

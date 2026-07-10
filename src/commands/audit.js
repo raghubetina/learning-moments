@@ -85,7 +85,8 @@ async function readManifest() {
   try {
     return { ok: true, path: target, data: await readJsonFile(target) };
   } catch (error) {
-    return { ok: false, reason: "corrupt", path: target, error: error?.message ?? String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "corrupt", path: target, error: message };
   }
 }
 
@@ -103,10 +104,22 @@ function ourHookEntries(settings) {
         if (entry.command === "node" && Array.isArray(entry.args)) {
           const [cli] = entry.args;
           if (typeof cli === "string" && cli.endsWith(cliSuffix)) {
-            out.push({ event, matcher: group.matcher, command: entry.command, args: entry.args });
+            out.push({
+              event,
+              matcher: group.matcher,
+              command: entry.command,
+              args: entry.args,
+              timeout: entry.timeout
+            });
           }
         } else if (typeof entry.command === "string" && entry.command.startsWith("learning-moments hook")) {
-          out.push({ event, matcher: group.matcher, command: entry.command, args: [] });
+          out.push({
+            event,
+            matcher: group.matcher,
+            command: entry.command,
+            args: [],
+            timeout: entry.timeout
+          });
         }
       }
     }
@@ -232,8 +245,11 @@ export async function auditCommand(options = {}) {
       for (const entry of hookEntries) {
         const argsRepr = entry.args.length > 0 ? entry.args.join(" ") : "";
         const matcher = entry.matcher ? ` matcher=${entry.matcher}` : "";
+        const timeout = typeof entry.timeout === "number" ? ` timeout=${entry.timeout}s` : "";
         process.stdout.write(`    ${entry.event}${matcher}\n`);
-        process.stdout.write(`      command: ${entry.command}${argsRepr ? ` ${argsRepr}` : ""}\n`);
+        process.stdout.write(
+          `      command: ${entry.command}${argsRepr ? ` ${argsRepr}` : ""}${timeout}\n`
+        );
       }
     }
     if (project.promptFiles.length > 0) {

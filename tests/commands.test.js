@@ -4,6 +4,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteDataCommand } from "../src/commands/delete-data.js";
+import { writableDirectory } from "../src/commands/doctor.js";
 import { initCommand } from "../src/commands/init.js";
 import { metricsCommand } from "../src/commands/metrics.js";
 import { pauseCommand } from "../src/commands/pause.js";
@@ -49,6 +50,7 @@ describe("initCommand", () => {
     const settings = await readJsonFile(path.join(root, ".claude", "settings.local.json"));
     expect(settings.hooks.PostToolBatch).toHaveLength(1);
     expect(settings.hooks.PostToolBatch[0]?.hooks).toHaveLength(1);
+    expect(settings.hooks.UserPromptSubmit[0]?.hooks[0]?.timeout).toBe(60);
 
     const gitignore = await fs.readFile(path.join(root, ".gitignore"), "utf8");
     expect(gitignore.match(/\.learning-moments\//g)).toHaveLength(1);
@@ -146,6 +148,17 @@ describe("initCommand", () => {
     await expect(
       fs.stat(path.join(root, ".learning-moments", "config.json.bak"))
     ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("doctor helpers", () => {
+  it("checks data-directory writability without creating a legacy log", async () => {
+    const root = await tempGitRepo();
+    const data = path.join(root, ".learning-moments");
+    await fs.mkdir(data, { recursive: true });
+
+    await expect(writableDirectory(data)).resolves.toBe(true);
+    await expect(fs.readdir(data)).resolves.toEqual([]);
   });
 });
 

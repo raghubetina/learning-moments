@@ -72,6 +72,24 @@ describe("ids", () => {
   });
 });
 
+describe("context safety", () => {
+  it("does not follow untracked symlinks when building hashes or model context", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "README.md"), "test\n");
+    git(["add", "README.md"], root);
+    git(["commit", "-m", "initial"], root);
+    const outside = await tempDir();
+    const secret = "outside-project-secret-value";
+    const target = path.join(outside, "secret.txt");
+    await fs.writeFile(target, secret);
+    await fs.symlink(target, path.join(root, "linked.txt"));
+
+    expect(gitHashObjects(root, ["linked.txt"])).toEqual({ "linked.txt": null });
+    expect(contextForFiles(root, ["linked.txt"], 4000)).not.toContain(secret);
+  });
+});
+
 describe("config", () => {
   it("round-trips the default config", async () => {
     const root = await tempDir();
