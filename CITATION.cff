@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use Learning Moments in research, please cite the software."
+title: "Learning Moments"
+type: software
+authors:
+  - family-names: Betina
+    given-names: Raghu
+repository-code: "https://github.com/raghubetina/learning-moments"
+url: "https://www.npmjs.com/package/learning-moments"
+license: MIT
+version: 0.5.4
+date-released: 2026-07-10
+keywords:
+  - AI-assisted programming
+  - developer education
+  - cognitive friction
+  - retrieval practice
+  - Claude Code

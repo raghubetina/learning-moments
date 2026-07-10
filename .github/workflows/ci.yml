@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Pinned to the floor declared in package.json `engines`. The publish
       # workflow uses Node 24 (required for Trusted Publishing's npm 11+
@@ -24,7 +24,7 @@ jobs:
       # minimum runtime users could be on. If we want broader matrix
       # coverage later, add 22 and 24 here.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
 

@@ -7,7 +7,10 @@ import { cliPath } from "./path-self.js";
 const hookSpecs = [
   { event: "PostToolUse", matcher: "Edit|Write", action: "post-tool-use" },
   { event: "PostToolBatch", action: "post-tool-batch" },
-  { event: "UserPromptSubmit", action: "user-prompt-submit" },
+  // UserPromptSubmit command hooks default to a 30-second timeout in Claude
+  // Code, while the default Learning Moments grader timeout is 45 seconds.
+  // Give the grader enough room to hit its own timeout and fail open cleanly.
+  { event: "UserPromptSubmit", action: "user-prompt-submit", timeout: 60 },
   { event: "UserPromptExpansion", action: "user-prompt-expansion" },
   { event: "Stop", action: "stop" },
   { event: "SessionStart", action: "session-start" }
@@ -17,11 +20,12 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function makeHookEntry(action) {
+function makeHookEntry(spec) {
   return {
     type: "command",
     command: "node",
-    args: [cliPath(), "hook", action]
+    args: [cliPath(), "hook", spec.action],
+    ...(spec.timeout ? { timeout: spec.timeout } : {})
   };
 }
 
@@ -81,7 +85,7 @@ export async function installHooks(projectRoot, shared) {
       group = spec.matcher ? { matcher: spec.matcher, hooks: [] } : { hooks: [] };
       cleanedGroups.push(group);
     }
-    group.hooks.push(makeHookEntry(spec.action));
+    group.hooks.push(makeHookEntry(spec));
 
     hooks[spec.event] = cleanedGroups.filter(
       (group) => !isObject(group) || !Array.isArray(group.hooks) || group.hooks.length > 0

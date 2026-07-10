@@ -125,7 +125,10 @@ export function gitHashObjects(root, files) {
   const present = [];
   for (const file of files) {
     try {
-      const stat = fs.statSync(path.join(root, file));
+      // Never follow symlinks while building model context. An untracked
+      // symlink can point outside the repository; statSync/readFileSync would
+      // otherwise follow it and could send unrelated local data to Claude.
+      const stat = fs.lstatSync(path.join(root, file));
       if (!stat.isFile()) {
         out[file] = null;
         continue;
@@ -260,7 +263,9 @@ export function contextForFiles(root, files, maxChars) {
     const fullPath = path.join(root, file);
     let stat;
     try {
-      stat = fs.statSync(fullPath);
+      // Use lstat so an untracked symlink is treated as a non-file. Following
+      // it here could read arbitrary content outside the project root.
+      stat = fs.lstatSync(fullPath);
     } catch {
       continue;
     }

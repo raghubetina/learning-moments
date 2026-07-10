@@ -65,7 +65,8 @@ export async function initCommand(options) {
       await fs.rename(configFile, backup);
       await writeConfig(projectRoot, config);
       configAction = `migrated (moved bad config to ${path.basename(backup)})`;
-      console.log(`Existing config did not validate: ${error?.message ?? error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`Existing config did not validate: ${message}`);
       console.log(`  Backed up to ${backup}`);
       console.log(`  Default config written. Merge any customizations back by hand.`);
     }

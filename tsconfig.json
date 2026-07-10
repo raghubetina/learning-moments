@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
+    "noImplicitAny": false,
     "noEmit": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -14,6 +15,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.js", "scripts/**/*.js", "tests/**/*.js"]
+  "include": ["src/**/*.js", "scripts/**/*.js"]
 }
-

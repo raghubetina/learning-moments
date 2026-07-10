@@ -1,7 +1,7 @@
 {
   "name": "learning-moments",
-  "version": "0.5.3",
-  "description": "A Claude Code integration that adds brief checks of developer understanding to AI-assisted programming.",
+  "version": "0.5.4",
+  "description": "Brief, situated comprehension checks for AI-assisted changes in Claude Code.",
   "type": "module",
   "bin": {
     "learning-moments": "src/cli.js"
@@ -14,7 +14,9 @@
     "MANIFEST.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE.md"
+    "LICENSE.md",
+    "AUDIT.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "test": "vitest run",
@@ -30,7 +32,11 @@
     "hooks",
     "learning",
     "ai-assisted-programming",
-    "developer-tools"
+    "developer-tools",
+    "developer-education",
+    "ai-coding-agents",
+    "retrieval-practice",
+    "cognitive-friction"
   ],
   "author": "Raghu Betina",
   "license": "MIT",
@@ -43,8 +49,8 @@
   },
   "homepage": "https://github.com/raghubetina/learning-moments#readme",
   "devDependencies": {
-    "@types/node": "^25.7.0",
+    "@types/node": "^20.19.43",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.10"
   }
 }
