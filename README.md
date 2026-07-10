@@ -22,6 +22,8 @@ The aim is not to turn work into a course. It is to expose the gap between accep
 
 Running a hook inside an active codebase asks for substantial trust. Learning Moments is deliberately unobfuscated, has no runtime dependencies or install-time scripts, and provides a verifiable path from the public GitHub source to the npm package. See [Inspectability and package integrity](#inspectability-and-package-integrity).
 
+Its tradeoffs are meant to be visible and reversible too. `learning-moments metrics` reports added time and estimated model cost, with token counts available in JSON. One pause command stops the questions when you need uninterrupted work. The learning profile, selection policy, and grading rubric are plain Markdown files you can edit without rebuilding or reinstalling anything.
+
 ## Status
 
 Learning Moments is an **early alpha for local testing and research prototypes**.
@@ -88,6 +90,14 @@ claude
 `init` creates project-local configuration under `.learning-moments/`, adds that directory to `.gitignore`, installs hooks in `.claude/settings.local.json`, and creates `/learning-moments:*` command prompts. It is safe to rerun after an upgrade.
 
 By default, Learning Moments asks at most **one question per hour**, with at least **20 minutes between questions**. It is intentionally not triggered by every edit.
+
+When you just need to get work done, pause it from Claude Code:
+
+```text
+/learning-moments:pause
+```
+
+Resume later with `/learning-moments:resume`. The equivalent shell commands are `learning-moments pause --project` and `learning-moments resume --project`. Pausing does not uninstall the hooks or delete your learning record.
 
 ### Try it without automatic questions
 
@@ -203,6 +213,8 @@ Learning Moments separates stable integration code from editable pedagogical pol
 - `grade-answer.md` defines the 0-3 rubric and feedback style.
 - `config.json` controls models, timeouts, budgets, ignored paths, and context limits.
 
+The profile, classifier policy, and grading rubric are read again when the relevant model call runs. Edit the Markdown, save it, and the next selection or grading call uses the new policy. There is no prompt build step and no restart required.
+
 Important defaults:
 
 | Setting | Default |
@@ -278,7 +290,7 @@ The command reports installation mode, hook entrypoints, runtime dependencies, l
 
 ## Performance and cost
 
-Model selection and grading are visible costs, not hidden implementation details:
+Model selection and grading are visible costs, not hidden implementation details. Learning Moments records hook latency, classifier and grader latency, input and output tokens, cache tokens, and Claude-reported estimated cost:
 
 ```bash
 learning-moments metrics
@@ -306,7 +318,7 @@ Several projects are exploring how developers can keep learning while they work 
 | [StaySharp](https://staysharp.dev/) | When the developer runs `/learn` after a session | An early-access hosted dashboard with a generated lesson and optional short quiz |
 | Learning Moments | After selected changes during a Claude Code session | A brief question inside the coding conversation, followed by structured feedback and local research metrics |
 
-These approaches can be complementary. Learning Opportunities is designed for richer, longer exercises and guided exploration. StaySharp turns a completed session into material that can be reviewed later. Learning Moments' distinctive combination is timing, granularity, restraint, and instrumentation: one in-flow question selected from actual session changes, under a strict interruption budget, with structured local outcomes. We are glad to see other people working on this problem and expect the projects to learn from one another.
+These approaches can be complementary. Learning Opportunities is designed for richer, longer exercises and guided exploration. StaySharp turns a completed session into material that can be reviewed later. Learning Moments' distinctive combination is timing, granularity, restraint, instrumentation, and user control: one in-flow question selected from actual session changes, under a strict interruption budget, with visible cost, immediate pause controls, editable Markdown policy, and structured local outcomes. We are glad to see other people working on this problem and expect the projects to learn from one another.
 
 ## Why this design
 
