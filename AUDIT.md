@@ -6,7 +6,7 @@ This audit covers Learning Moments `0.5.5` as reviewed on 2026-07-10. It examine
 
 The core design is appropriately small and inspectable: source-executed JavaScript, no runtime dependencies, explicit Git-based change detection, structured model responses, append-only local records, and fail-open hooks. No critical code-execution or data-loss issue was found in the reviewed version.
 
-The largest remaining product risk is latency, not correctness. Full semantic classification still runs synchronously in `PostToolBatch`, so a candidate can pause the agentic loop while `claude -p` responds. That work is tracked in [issue #14](https://github.com/raghubetina/learning-moments/issues/14).
+Synchronous classifier latency is the largest remaining product risk. Full semantic classification still runs in `PostToolBatch`, so a candidate can pause the agentic loop while `claude -p` responds. That work is tracked in [issue #14](https://github.com/raghubetina/learning-moments/issues/14).
 
 ## Review methods
 
@@ -48,7 +48,7 @@ The npm publish job now runs the type check itself, verifies that the Git tag ma
 
 ### Synchronous classification latency: high product risk
 
-`PostToolBatch` still awaits the classifier. The existing prompt and classifier budgets reduce how often that happens, but they do not remove latency for calls that do run. The right fix is a background candidate pipeline with freshness, claim, retry, and later-injection semantics rather than a faster prompt. See [issue #14](https://github.com/raghubetina/learning-moments/issues/14).
+`PostToolBatch` still awaits the classifier. The existing prompt and classifier budgets reduce how often that happens, but calls that pass the gates still add latency. [Issue #14](https://github.com/raghubetina/learning-moments/issues/14) tracks a background candidate pipeline with freshness, claim, retry, and later-injection semantics.
 
 ### Session-relative attribution: medium
 

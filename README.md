@@ -7,22 +7,29 @@
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Learning Moments is a local, low-interruption comprehension layer for Claude Code.
+Learning Moments asks brief questions about changes made during a Claude Code session.
 
-AI coding agents can inspect a codebase, plan a change, edit files, run tests, and summarize the result. That is useful, but it can also let us move on without doing the tracing, prediction, explanation, and test reasoning that build durable system understanding.
+AI coding agents can inspect a codebase, plan a change, edit files, run tests, and summarize the result. Their speed also makes it easy to move on before tracing the code, predicting its behavior, or deciding how to test it.
 
-Learning Moments selectively puts a little of that cognitive work back. After a meaningful change during a Claude Code session, it may ask one short question about the actual files you are working on:
+After a meaningful change, Learning Moments may ask one short question about the files you are working on:
 
 > **Learning Moment `lm_a7f3`**
 > The new retry branch treats timeouts differently from other failures. What behavior would you expect after the final timeout, and what test would distinguish it from the old behavior?
 
 You answer in the normal Claude Code conversation. Learning Moments gives brief feedback and the work continues. If the change does not support a useful, specific question, or if selection fails, it stays quiet.
 
-The aim is not to turn work into a course. It is to expose the gap between accepting code and being able to explain, predict, or test it. Learning Moments complements code review and tests by exercising understanding before a session change becomes code you are expected to maintain.
+Each question checks whether you can explain, predict, or test code you just accepted. It supplements code review and tests with a quick comprehension check while the change is still fresh.
 
-Running a hook inside an active codebase asks for substantial trust. Learning Moments is deliberately unobfuscated, has no runtime dependencies or install-time scripts, and provides a verifiable path from the public GitHub source to the npm package. See [Inspectability and package integrity](#inspectability-and-package-integrity).
+Because the hook runs inside active projects, the package is unobfuscated, has no runtime dependencies or install-time scripts, and includes checks that connect the public GitHub source to the npm package. See [Inspectability and package integrity](#inspectability-and-package-integrity).
 
-Its tradeoffs are meant to be visible and reversible too. `learning-moments metrics` reports added time and estimated model cost, with token counts available in JSON. One pause command stops the questions when you need uninterrupted work. The learning profile, selection policy, and grading rubric are plain Markdown files you can edit without rebuilding or reinstalling anything.
+`learning-moments metrics` reports added time and estimated model cost, with token counts available in JSON. One pause command stops the questions when you need uninterrupted work. The learning profile, selection policy, and grading rubric are Markdown files you can edit without rebuilding or reinstalling anything.
+
+## Contents
+
+- Get started with the [quick start](#quick-start), [commands](#commands), and [configuration](#configuration).
+- Read the [project status](#status), [current claims](#what-i-can-claim-so-far), [hook lifecycle](#how-it-works), and [design rationale](#why-this-design).
+- Review [privacy and trust](#privacy-and-trust), [package integrity](#inspectability-and-package-integrity), and [performance and cost](#performance-and-cost).
+- See [related projects](#related-projects), [development](#development), the [roadmap](#roadmap), and the [license](#license).
 
 ## Status
 
@@ -49,11 +56,11 @@ Not implemented yet:
 
 ## What I can claim so far
 
-After using Learning Moments in my own work for several weeks, I cannot honestly say whether it will prevent long-term skill decay. The current prototype cannot establish that, and delayed recall is not implemented yet.
+I have used Learning Moments in my own work for several weeks. That is too little evidence to say whether it prevents long-term skill decay, especially without delayed recall.
 
-I can say that it makes it impossible for me to ignore how much code I accept without fully understanding it. A specific question about a change often reveals that I cannot yet predict its behavior, explain a decision, or name the test that would expose a mistake.
+In that time, its questions have regularly shown me that I accepted code without fully understanding it. A specific question often reveals that I cannot yet predict the behavior, explain a decision, or name the test that would expose a mistake.
 
-That is the present value proposition: an immediate check on comprehension. Whether repeated checks improve long-term retention remains a research question.
+For now, I can say only that it checks comprehension in the moment. I do not yet know whether repeated checks improve long-term retention.
 
 ## Quick start
 
@@ -164,9 +171,9 @@ Change attribution is session-relative. Learning Moments can tell that a file ch
 
 ### Question types
 
-- **Predict:** Explain what behavior changed or what might break.
-- **Test:** Name a concrete check that would expose a misunderstanding.
-- **Recall:** Retrieve the rationale for an earlier change. This is part of the design vocabulary but is not implemented yet.
+- `Predict` asks what behavior changed or what might break.
+- `Test` asks for a concrete check that would expose a misunderstanding.
+- `Recall` would ask for the rationale behind an earlier change. It is part of the design vocabulary but is not implemented yet.
 
 The selector generates an expected-answer outline for grading, but that outline is not inserted into the conversation before you answer.
 
@@ -215,7 +222,7 @@ Learning Moments separates stable integration code from editable pedagogical pol
 
 The profile, classifier policy, and grading rubric are read again when the relevant model call runs. Edit the Markdown, save it, and the next selection or grading call uses the new policy. There is no prompt build step and no restart required.
 
-Important defaults:
+Defaults:
 
 | Setting | Default |
 | --- | ---: |
@@ -244,7 +251,7 @@ Before a model call, the tool:
 - disables tools, hooks, slash commands, and session persistence in the nested Claude process; and
 - validates model responses against strict JSON schemas.
 
-These controls reduce risk; they do not make redaction infallible. Review `.learning-moments/config.json` and `src/core/redaction.js` before using the tool on sensitive code. Use it only in repositories you trust. Claude Code's non-interactive `-p` mode does not show the workspace trust dialog.
+These controls reduce exposure but cannot catch every secret. Review `.learning-moments/config.json` and `src/core/redaction.js` before using the tool on sensitive code. Use it only in repositories you trust. Claude Code's non-interactive `-p` mode does not show the workspace trust dialog.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and [AUDIT.md](AUDIT.md) for the current code-review record and residual risks.
 
@@ -258,9 +265,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and [AUDIT.md](AUDIT.
 
 ## Inspectability and package integrity
 
-Installing a hook that runs inside active projects, reads changed code, and invokes a model asks users for substantial trust. Transparency is therefore part of the product, not just part of its documentation.
-
-Learning Moments is designed so the code that runs is the code you can inspect:
+Learning Moments is designed so you can inspect the code that runs inside your projects:
 
 - unobfuscated, source-executed ESM JavaScript;
 - no bundling, minification, or generated runtime artifact;
@@ -286,11 +291,11 @@ After installation, run:
 learning-moments audit
 ```
 
-The command reports installation mode, hook entrypoints, runtime dependencies, lifecycle scripts, prompt files, and any missing, unexpected, or modified shipped file. These measures do not prove that the software is safe. They make its implementation, package contents, and GitHub-to-npm provenance independently inspectable.
+The command reports installation mode, hook entrypoints, runtime dependencies, lifecycle scripts, prompt files, and any missing, unexpected, or modified shipped file. These checks expose the implementation, package contents, and GitHub-to-npm provenance for independent review. Assessing whether the software is safe still requires reading the code and considering the repository where it will run.
 
 ## Performance and cost
 
-Model selection and grading are visible costs, not hidden implementation details. Learning Moments records hook latency, classifier and grader latency, input and output tokens, cache tokens, and Claude-reported estimated cost:
+Model selection and grading cost time and tokens. Learning Moments records hook latency, classifier and grader latency, token use, cache tokens, and Claude-reported estimated cost:
 
 ```bash
 learning-moments metrics
@@ -310,7 +315,7 @@ The current classifier runs synchronously in `PostToolBatch`, so eligible classi
 
 ## Related projects
 
-Several projects are exploring how developers can keep learning while they work with coding agents. They share much of the motivation behind Learning Moments and make different choices about timing, depth, and product form.
+Other projects are also exploring how developers can keep learning while they work with coding agents:
 
 | Project | When it intervenes | What it offers |
 | --- | --- | --- |
@@ -318,7 +323,7 @@ Several projects are exploring how developers can keep learning while they work 
 | [StaySharp](https://staysharp.dev/) | When the developer runs `/learn` after a session | An early-access hosted dashboard with a generated lesson and optional short quiz |
 | Learning Moments | After selected changes during a Claude Code session | A brief question inside the coding conversation, followed by structured feedback and local research metrics |
 
-These approaches can be complementary. Learning Opportunities is designed for richer, longer exercises and guided exploration. StaySharp turns a completed session into material that can be reviewed later. Learning Moments' distinctive combination is timing, granularity, restraint, instrumentation, and user control: one in-flow question selected from actual session changes, under a strict interruption budget, with visible cost, immediate pause controls, editable Markdown policy, and structured local outcomes. We are glad to see other people working on this problem and expect the projects to learn from one another.
+Learning Opportunities provides longer exercises and guided exploration. StaySharp turns a completed session into material for later review. Learning Moments stays in the coding conversation: it selects one brief question from session changes, enforces an interruption budget, reports model cost, and stores outcomes locally.
 
 ## Why this design
 
@@ -333,10 +338,10 @@ The design draws on several lines of research:
 - [the navigator's role in pair programming](https://doi.org/10.1016/j.ijhcs.2007.03.005); and
 - [cognitive-engagement interfaces for AI-generated code](https://doi.org/10.1145/3708359.3712104).
 
-Those findings motivate five product choices:
+The design follows five rules:
 
-1. Require generation, not mere recognition.
-2. Ask about the developer's actual change, not generic trivia.
+1. Use questions that require the developer to produce an answer.
+2. Tie each question to the current change.
 3. Ask while the relevant code is still in working memory.
 4. Prefer concrete prediction, explanation, and verification.
 5. Enforce interruption budgets and prefer silence over a weak question.
@@ -362,7 +367,7 @@ Release verification additionally checks npm advisories, the shipped-file manife
 
 ## Roadmap
 
-The next two meaningful product steps are deliberately larger than polish:
+The next two product steps are:
 
 1. [Move classification off the blocking hook path](https://github.com/raghubetina/learning-moments/issues/14).
 2. [Add delayed recall for prior Learning Moments](https://github.com/raghubetina/learning-moments/issues/15).
