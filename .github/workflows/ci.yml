@@ -24,7 +24,7 @@ jobs:
       # minimum runtime users could be on. If we want broader matrix
       # coverage later, add 22 and 24 here.
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
