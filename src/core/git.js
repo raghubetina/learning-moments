@@ -111,7 +111,7 @@ export function dirtyFiles(cwd = process.cwd()) {
 }
 
 /**
- * Hash a batch of working-tree paths via `git hash-object --stdin-paths`.
+ * Hash a batch of working-tree paths with `git hash-object`.
  * Returns a path → fingerprint map. Three fingerprint shapes:
  *   - a 40-char git blob SHA-1 for files <= MAX_HASH_BYTES,
  *   - a `meta:<size>:<mtimeMs>` string for files over the size cap (skips
@@ -137,17 +137,22 @@ export function gitHashObjects(root, files, { write = false } = {}) {
 
   /** @type {string[]} */
   const present = [];
+  const realRoot = fs.realpathSync(root);
   for (const file of files) {
-    // --stdin-paths reads one path per line.
-    if (file.includes("\n")) {
-      out[file] = null;
-      continue;
-    }
     try {
       // Never follow symlinks while building model context. An untracked
       // symlink can point outside the repository; statSync/readFileSync would
       // otherwise follow it and could send unrelated local data to Claude.
       const stat = fs.lstatSync(path.join(root, file));
+      // lstat checks only the last component. A directory on the path that
+      // is a symlink could lead outside the repository, or to an excluded
+      // directory inside it under a name the filter allows, so the parent
+      // must resolve to exactly the path it is named by.
+      const parent = fs.realpathSync(path.dirname(path.join(root, file)));
+      if (parent !== path.join(realRoot, path.dirname(file))) {
+        out[file] = "nonfile:symlinked-parent";
+        continue;
+      }
       if (!stat.isFile()) {
         // Distinct from null (deleted): a file replaced by a symlink must
         // not read as a deletion whose old content becomes context.
@@ -165,18 +170,21 @@ export function gitHashObjects(root, files, { write = false } = {}) {
   }
   if (present.length === 0) return out;
 
-  const stdin = `${present.join("\n")}\n`;
-  // With `write`, the content is also stored as a blob, so a later hook
-  // can diff the file against exactly this version.
-  const raw = execFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--stdin-paths"], {
-    cwd: root,
-    input: stdin,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-  const hashes = raw.split("\n").filter(Boolean);
-  for (let i = 0; i < present.length; i += 1) {
-    out[present[i]] = hashes[i] ?? null;
+  // Filenames go as arguments after `--`, never on stdin: --stdin-paths
+  // decodes C-style quoting, so a file named "..\057x" would be read as ../x.
+  for (let start = 0; start < present.length; start += 200) {
+    const batch = present.slice(start, start + 200);
+    const raw = execFileSync("git", ["hash-object", ...(write ? ["-w"] : []), "--", ...batch], {
+      cwd: root,
+      encoding: "utf8",
+      env: gitEnv(),
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const hashes = raw.split("\n").filter(Boolean);
+    for (let i = 0; i < batch.length; i += 1) {
+      out[batch[i]] = hashes[i] ?? null;
+    }
   }
   return out;
 }
