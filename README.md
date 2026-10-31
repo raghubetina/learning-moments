@@ -181,6 +181,18 @@ The hooks act only in a project where `learning-moments init` ran, and never cre
 
 The selector generates an expected-answer outline for grading, but that outline is not inserted into the conversation before you answer.
 
+### Replying to a question
+
+Your next message after a question is read as a reply, with a few exceptions so that ordinary work is never graded as a wrong answer:
+
+- `skip`, `not now`, or `later` declines the question, and so do `proceed`, `continue`, and `ok`.
+- `/learning-moments:pause` declines the question and pauses the project.
+- Other slash commands, and messages Claude Code sends on its own (such as a background agent's report), leave the question open.
+- "I don't know" or "not sure" gets a short explanation instead of a grade.
+- A message the grader finds is not an attempt, such as a new instruction, gets no feedback.
+
+Only one question is open per session, and a question nobody answers within two hours stops capturing messages.
+
 ## Commands
 
 | Command | Purpose |

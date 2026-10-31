@@ -56,6 +56,24 @@ export async function stopHook(input) {
     return;
   }
 
+  // Once a question has been seen, later turns (a command, an automatic
+  // prompt) can end without repeating its ID; that must not close it
+  // before the developer answers.
+  if (events.some((event) => event.type === "question_observed" && event.moment_id === pending.id)) {
+    await appendEvent(projectRoot, {
+      type: "hook_completed",
+      hook_event_name: parsed.hook_event_name,
+      session_id: parsed.session_id,
+      transcript_path: parsed.transcript_path,
+      cwd: parsed.cwd,
+      duration_ms: Date.now() - startedAt,
+      outcome: "question_open",
+      moment_id: pending.id,
+      short_id: pending.short_id
+    });
+    return;
+  }
+
   const asked = parsed.last_assistant_message?.includes(pending.short_id) ?? false;
   await appendEvent(projectRoot, {
     type: asked ? "question_observed" : "moment_injection_missed",
