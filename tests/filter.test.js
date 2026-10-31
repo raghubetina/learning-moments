@@ -47,7 +47,31 @@ describe("candidateFiles", () => {
       "package-lock.json",
       "yarn.lock"
     ];
-    expect(candidateFiles(input, baseConfig)).toEqual(["src/foo.js", "package-lock.json"]);
+    expect(candidateFiles(input, baseConfig)).toEqual(["src/foo.js"]);
+  });
+
+  it("always excludes credentials, lockfiles, and its own data at any depth", () => {
+    const input = [
+      "src/app.js",
+      "src/env.js",
+      "apps/api/.env",
+      "apps/api/.env.local",
+      "apps/api/.npmrc",
+      "apps/api/.ssh/id_rsa",
+      "home/.aws/credentials",
+      "deploy/id_ed25519",
+      "infra/prod.tfstate",
+      "apps/web/package-lock.json",
+      "pnpm-lock.yaml",
+      "Gemfile.lock",
+      "config/master.key",
+      ".learning-moments/ledger.jsonl"
+    ];
+    // An empty user ignore list, as in a config written by an older version.
+    expect(candidateFiles(input, { ignore: { paths: [], extensions: [] } })).toEqual([
+      "src/app.js",
+      "src/env.js"
+    ]);
   });
 
   it("filters secret-bearing paths under defaultConfig.ignore", async () => {

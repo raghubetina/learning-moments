@@ -246,11 +246,13 @@ Learning Moments stores its own data locally and uses your configured Claude pro
 
 Before a model call, the tool:
 
-- excludes common generated and secret-bearing paths such as `node_modules/**`, `.env*`, `.npmrc`, `.ssh/**`, private-key extensions, and lockfiles;
+- always excludes credential files at any depth, whatever `config.json` says: `.env*`, `.envrc`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `.aws/`, `.ssh/`, `.gnupg/`, SSH and TLS private keys, keystores, and Terraform state (see `BUILTIN_IGNORED_PATHS` in `src/core/filter.js`);
+- always excludes lockfiles and its own `.learning-moments/` data, and applies your `ignore` patterns on top;
 - refuses to follow symbolic links while gathering file context;
-- skips large and binary untracked files;
+- passes filenames to Git as literal paths, never as pathspec patterns, and disables external diff and textconv programs;
+- skips files over 1 MB and binary untracked files;
 - caps both path count and context size;
-- redacts common credential formats in diffs and answers;
+- redacts common credential formats in diffs and answers, file by file, before the context limit truncates anything;
 - runs the nested Claude process with built-in tools, MCP servers and tools, hooks, slash commands, CLAUDE.md files, auto memory, and session persistence disabled; and
 - validates model responses against strict JSON schemas.
 

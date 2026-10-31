@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { candidateFiles } from "./filter.js";
+import { redactSecrets } from "./redaction.js";
 
 // Read budget for context excerpts. contextForFiles reads file content
 // directly to embed in classifier prompts; we cap that work so a stray
@@ -30,10 +31,26 @@ function looksBinary(buf) {
   return false;
 }
 
+// Filenames come from the working tree, so Git must never read them as
+// pathspec patterns: a file literally named `*` would otherwise widen a
+// diff to files the candidate filter excluded. Git refuses literal mode
+// alongside the glob or icase modes, so inherited settings are cleared.
+function gitEnv() {
+  return {
+    ...process.env,
+    GIT_LITERAL_PATHSPECS: "1",
+    GIT_GLOB_PATHSPECS: "0",
+    GIT_NOGLOB_PATHSPECS: "0",
+    GIT_ICASE_PATHSPECS: "0"
+  };
+}
+
 export function runGit(args, cwd = process.cwd()) {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
+    env: gitEnv(),
+    maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"]
   });
 }
@@ -224,12 +241,22 @@ export function changedSinceBaseline(baseline, current) {
   return changed.sort();
 }
 
-export function diffForFiles(root, files, maxChars) {
-  if (files.length === 0 || maxChars === 0) {
-    return "";
-  }
-  const raw = runGit(["diff", "HEAD", "--", ...files], root);
-  return raw.length > maxChars ? `${raw.slice(0, maxChars)}\n[diff truncated]\n` : raw;
+/**
+ * The commit to diff against: HEAD, or Git's empty tree in a repository
+ * with no commits yet, where `git diff HEAD` fails.
+ *
+ * @param {string} root
+ */
+function diffBase(root) {
+  const head = runGitOrNull(["rev-parse", "--verify", "--quiet", "HEAD"], root);
+  if (head) return head;
+  return execFileSync("git", ["hash-object", "-t", "tree", "--stdin"], {
+    cwd: root,
+    input: "",
+    encoding: "utf8",
+    env: gitEnv(),
+    stdio: ["pipe", "pipe", "pipe"]
+  }).trim();
 }
 
 function isTracked(root, file) {
@@ -241,45 +268,74 @@ function isTracked(root, file) {
   }
 }
 
+/**
+ * Raw (unredacted) context for one candidate file: its diff against
+ * `base`, or the content of an untracked text file.
+ *
+ * @param {string} root
+ * @param {string} file
+ * @param {string} base
+ * @returns {string | null}
+ */
+function fileContext(root, file, base) {
+  /** @type {fs.Stats | null} */
+  let stat = null;
+  try {
+    // lstat so an untracked symlink is treated as a non-file. Following
+    // it here could read arbitrary content outside the project root.
+    stat = fs.lstatSync(path.join(root, file));
+  } catch {
+    // Deleted in the working tree; the diff below shows the removal.
+  }
+  if (stat && !stat.isFile()) return null;
+  if (stat && stat.size > MAX_CONTEXT_FILE_BYTES) {
+    return `--- ${file}: changed, too large to include (${stat.size} bytes) ---\n`;
+  }
+
+  // --no-ext-diff and --no-textconv keep Git from running external
+  // programs configured for diffs while hooks build model context.
+  const diff = runGit(["diff", "--no-color", "--no-ext-diff", "--no-textconv", base, "--", file], root);
+  if (diff.trim().length > 0) return diff;
+  if (!stat || isTracked(root, file)) return null;
+
+  const buf = fs.readFileSync(path.join(root, file));
+  if (looksBinary(buf)) return null;
+  return `--- untracked file: ${file} ---\n${buf.toString("utf8")}\n`;
+}
+
+/**
+ * Bounded, redacted model context for candidate files, in the order given.
+ * Each file's context is redacted whole before the character budget cuts
+ * it, so truncation can never separate a secret from the markers that let
+ * the redactor recognize it.
+ *
+ * @param {string} root
+ * @param {string[]} files
+ * @param {number} maxChars
+ * @returns {import("./redaction.js").RedactionResult}
+ */
 export function contextForFiles(root, files, maxChars) {
+  /** @type {import("./redaction.js").RedactionFinding[]} */
+  const findings = [];
   if (files.length === 0 || maxChars === 0) {
-    return "";
+    return { text: "", findings };
   }
 
-  const diff = diffForFiles(root, files, maxChars);
-  if (diff.length >= maxChars) {
-    return diff;
-  }
-
-  const chunks = diff.trim().length > 0 ? [diff] : [];
-  let remaining = maxChars - chunks.join("\n").length;
+  const base = diffBase(root);
+  const chunks = [];
+  let remaining = maxChars;
   for (const file of files) {
-    if (remaining <= 0) {
-      break;
-    }
-    if (isTracked(root, file)) {
-      continue;
-    }
-    const fullPath = path.join(root, file);
-    let stat;
-    try {
-      // Use lstat so an untracked symlink is treated as a non-file. Following
-      // it here could read arbitrary content outside the project root.
-      stat = fs.lstatSync(fullPath);
-    } catch {
-      continue;
-    }
-    if (!stat.isFile()) continue;
-    if (stat.size > MAX_CONTEXT_FILE_BYTES) continue;
-    const buf = fs.readFileSync(fullPath);
-    if (looksBinary(buf)) continue;
-    const content = buf.toString("utf8");
-    const header = `--- untracked file: ${file} ---\n`;
-    const excerpt = `${header}${content.slice(0, Math.max(0, remaining - header.length))}`;
-    chunks.push(excerpt);
-    remaining -= excerpt.length;
+    if (remaining <= 0) break;
+    const raw = fileContext(root, file, base);
+    if (raw === null) continue;
+    const redacted = redactSecrets(raw);
+    findings.push(...redacted.findings);
+    const chunk =
+      redacted.text.length > remaining
+        ? `${redacted.text.slice(0, remaining)}\n[context truncated]\n`
+        : redacted.text;
+    chunks.push(chunk);
+    remaining -= chunk.length;
   }
-
-  const raw = chunks.join("\n");
-  return raw.length > maxChars ? `${raw.slice(0, maxChars)}\n[context truncated]\n` : raw;
+  return { text: chunks.join(""), findings };
 }

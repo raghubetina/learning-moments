@@ -17,7 +17,7 @@ import { ClaudeCallError } from "../src/core/claude-call.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
 import { runHook } from "../src/core/hook-runner.js";
-import { readEvents } from "../src/core/log.js";
+import { appendEvent, readEvents } from "../src/core/log.js";
 
 let previousCwd;
 
@@ -386,6 +386,40 @@ describe("hook flow", () => {
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).not.toContain("grade_created");
     expect(events.map((event) => event.type)).not.toContain("answer_received");
+  });
+
+  it("refilters changes against a baseline saved before a path was excluded", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await sessionStartHook({ session_id: "session-1", cwd: root, hook_event_name: "SessionStart", source: "startup" });
+    const real = (await readEvents(root)).find((event) => event.type === "session_baseline_created").snapshot;
+    // The same baseline as an older version would have written it, still
+    // treating these dirty paths as candidates.
+    await appendEvent(root, {
+      type: "session_baseline_created",
+      session_id: "session-1",
+      cwd: root,
+      snapshot: {
+        ...real,
+        candidates: [...real.candidates, ".env", ".learning-moments/ledger.jsonl"],
+        hashes: {
+          ...real.hashes,
+          ".env": "0000000000000000000000000000000000000000",
+          ".learning-moments/ledger.jsonl": "1111111111111111111111111111111111111111"
+        }
+      }
+    });
+    await fs.writeFile(path.join(root, ".env"), "API_TOKEN=unchanged\n");
+
+    const output = await postToolBatchHook({
+      session_id: "session-1",
+      cwd: root,
+      hook_event_name: "PostToolBatch",
+      tool_calls: []
+    });
+    expect(output).toBeNull();
+    expect(runClaudeStructured).not.toHaveBeenCalled();
   });
 
   it("records a hook_error event and exits cleanly when a hook throws", async () => {
