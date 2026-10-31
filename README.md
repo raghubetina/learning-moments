@@ -57,7 +57,7 @@ Not implemented yet:
 
 ## What I can claim so far
 
-I have used Learning Moments in my own work for several weeks. That is too little evidence to say whether it prevents long-term skill decay, especially without delayed recall.
+I have used Learning Moments in my own work for several months. That is too little evidence to say whether it prevents long-term skill decay; delayed recall, added in 0.6.0, is the first step toward measuring retention rather than immediate comprehension.
 
 In that time, its questions have regularly shown me that I accepted code without fully understanding it. A specific question often reveals that I cannot yet predict the behavior, explain a decision, or name the test that would expose a mistake.
 
@@ -122,13 +122,13 @@ The band is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/ove
 
 ### Try it without automatic questions
 
-Observe-only mode runs selection and records what would have happened, but does not inject questions:
+Observe-only mode runs selection and records what would have happened, but never asks:
 
 ```bash
 learning-moments init --observe-only
 ```
 
-Observe-only mode still calls Claude for candidate selection, so it can add latency and consume usage.
+Observe-only mode still calls Claude in the background for selection, so it consumes usage.
 
 ### Install from an auditable checkout
 
@@ -174,7 +174,7 @@ Read your reply ---> grade, explain, or set aside ---> brief feedback
 
 The lifecycle is implemented with six Claude Code hooks:
 
-1. `SessionStart` records the current branch, commit, dirty paths, and content fingerprints once per session; resuming, compacting, or clearing keeps that baseline.
+1. `SessionStart` records the current branch, commit, dirty paths, and content fingerprints once per session; resuming or compacting keeps that baseline, while `/clear` starts a new session and a new baseline.
 2. `PostToolUse` records lightweight edit telemetry in the background.
 3. `PostToolBatch` runs in the background after each batch of tool calls. It finds files that changed since the session baseline and, when one is worth it, selects a question. Claude does not wait for it.
 4. `Stop` asks the selected question when Claude finishes its turn, and checks whether earlier questions and feedback were displayed.
@@ -361,9 +361,11 @@ Other projects are also exploring how developers can keep learning while they wo
 | --- | --- | --- |
 | [Learning Opportunities](https://github.com/DrCatHicks/learning-opportunities) | On request, or after substantial work and commits | Open-source Claude Code and Codex skills for optional 10-15 minute exercises, retrieval check-ins, and codebase orientation |
 | [StaySharp](https://staysharp.dev/) | When the developer runs `/learn` after a session | An early-access hosted dashboard with a generated lesson and optional short quiz |
+| [Save Point](https://github.com/thierrypdamiba/save-point) | When the developer runs `/save-point` after a merge | An Agent Skill that asks source-grounded questions one at a time and brings concepts back on a spaced schedule |
+| Claude Code's built-in [You should know](https://code.claude.com/docs/en/interactive-mode#you-should-know-suggestions) mod | While Claude works, off by default | A note above the prompt about something you may have missed, which you can mark as already known |
 | Learning Moments | After selected changes during a Claude Code session | A brief question inside the coding conversation, followed by structured feedback and local research metrics |
 
-Learning Opportunities provides longer exercises and guided exploration. StaySharp turns a completed session into material for later review. Learning Moments stays in the coding conversation: it selects one brief question from session changes, enforces an interruption budget, reports model cost, and stores outcomes locally.
+Learning Opportunities provides longer exercises and guided exploration. StaySharp turns a completed session into material for later review, and Save Point runs a quiz when you ask for one. You should know tells you something; Learning Moments asks you to produce the answer, which is the retrieval the design is built on. It stays in the coding conversation: it selects one brief question from session changes on its own, asks it when Claude's turn ends, enforces an interruption budget, brings questions back later, reports model cost, and stores outcomes locally.
 
 ## Why this design
 

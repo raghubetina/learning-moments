@@ -108,10 +108,10 @@ export async function sessionStartHook(input) {
     return;
   }
 
-  // Resume, compaction, and /clear fire SessionStart again for a session
-  // that may already have a baseline. Replacing it would fold every change
-  // Claude made before that point into the new baseline, so those changes
-  // could never be asked about.
+  // Resume and compaction fire SessionStart again for a session that may
+  // already have a baseline (/clear starts a new session ID). Replacing it
+  // would fold every change Claude made before that point into the new
+  // baseline, so those changes could never be asked about.
   const existing = latestSessionBaseline(await readControl(projectRoot), parsed.session_id);
   if (existing && existing.root === workRoot) {
     await complete("session_baseline_kept");
