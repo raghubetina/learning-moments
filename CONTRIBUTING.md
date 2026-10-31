@@ -32,8 +32,15 @@ Tests mock model calls; they do not consume Claude usage.
 - Consider whether new event types belong in the durable ledger, bounded control state, or disposable telemetry; update `src/core/event-registry.js` explicitly.
 - Keep code and answer context bounded and redacted before persistence or model calls.
 - Update the README and changelog when behavior or configuration changes.
+- After changing hook specs in `src/core/claude-settings.js` or command prompts in `src/core/defaults.js`, run `npm run build-plugin`; a test fails when the plugin's `hooks/` and `skills/` drift from them.
 - Run `npm run check` and `npm test`.
-- Do not regenerate `MANIFEST.json` until all shipped-file changes are final.
+- Run `npm run build-manifest` as the last step of any change to a shipped file. CI runs `learning-moments audit`, which fails on a stale `MANIFEST.json`.
+
+## Trying a change in Claude Code
+
+- Load the checkout as a plugin for one session with `claude --plugin-dir .`, then run `/learning-moments:init` in a throwaway Git repository. `claude plugin validate .` checks the manifest, hooks, skills, and the question-band mod.
+- Tests never make model calls: `tests/setup.js` sets `LEARNING_MOMENTS_DISABLE_CLAUDE=1`, and hook tests mock the background grader.
+- The question-band mod (`hooks/question-band.tsx`) is TypeScript the engine compiles; type-check it against the declarations Claude Code writes beside a loaded mod (see the `plugin-authoring` skill), since `npm run check` covers only `src/` and `scripts/`.
 
 ## Release-only verification
 
@@ -41,12 +48,10 @@ Maintainers should run:
 
 ```bash
 npm audit
-npm run build-manifest
-npm run audit
-npm run release-verify
+npm run release
 ```
 
-The publish workflow repeats type checking, tests, manifest verification, packed-tarball installation, and npm provenance publication.
+`npm run release` regenerates the plugin files and the manifest, then type-checks, tests, audits, and installs the packed tarball. Bump `version` in `package.json` first; the plugin manifest takes its version from there. Tag `v<version>` on `main` to publish: the workflow repeats the checks, refuses a tag that doesn't match `package.json`, fails on high-severity advisories, and publishes with npm provenance. The plugin marketplace's npm source picks up the release from there.
 
 ## Security reports
 

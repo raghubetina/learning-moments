@@ -4,7 +4,9 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
-Run `learning-moments init` again after upgrading to install the new hook settings.
+## [0.6.0] - 2026-10-31
+
+Questions are now selected in the background and asked when Claude finishes its turn, with delayed recall in later sessions and a Claude Code plugin install. This release also closes privacy and isolation gaps found in a full audit. After upgrading an npm install, run `learning-moments init` again in each project to install the new hook settings; to switch to the plugin, run `/learning-moments:init` instead.
 
 ### Added
 
@@ -56,7 +58,7 @@ Run `learning-moments init` again after upgrading to install the new hook settin
 - Hooks created an untracked `.learning-moments/` directory in any Git repository the session's working directory entered, such as a clone Claude ran `cd` into, even where `init` never ran. Hooks now act only in an initialized project, prefer `CLAUDE_PROJECT_DIR` over the hook's `cwd`, and never create the data directory themselves.
 - Hooks failed in Claude Code worktree sessions, where settings come from the main checkout but files change in the worktree. Learning Moments now reads changes from the worktree and records them in the main checkout's `.learning-moments/`.
 - A tool batch inside a subagent could spend the hourly question on context only that subagent saw. Hooks now ignore tool calls that carry an `agent_id`.
-- `SessionStart` on resume, compaction, or `/clear` replaced the session baseline, so changes Claude made before that point could never be asked about. An existing baseline is now kept.
+- `SessionStart` on resume or compaction replaced the session baseline, so changes Claude made before that point could never be asked about. An existing baseline is now kept. (`/clear` starts a new session ID, so it still starts a new baseline.)
 - One malformed line in a JSONL log, such as the tail of an interrupted append, made every hook that read that file fail. Readers now set damaged lines aside, `doctor` reports them, and the next record always starts on a new line.
 - Every message after a question was graded as its answer, including `/learning-moments:pause`, other slash commands, "Proceed", background-agent reports, and scheduled prompts. In the author's own ledgers, five of seven graded "answers" were of this kind or "I'm not sure", all scored 0. Commands and automatic prompts now leave the question open; pause, skip, and continue phrases decline it; "I don't know" gets an explanation and a `dont_know` label instead of a grade; and the grader labels non-attempts `not_an_answer` and gives no feedback.
 - A message starting with "pass" (as in "pass the token through") counted as a skip.
@@ -291,7 +293,8 @@ This release rebuilds Learning Moments around a source-executed, zero-dependency
 - End-to-end inspectability story: `npm audit signatures` verifies the tarball came from this repository's CI; `learning-moments audit` verifies the files on disk match the manifest that travelled with it. Together they cover public source → CI build → registry → installed files.
 - No npm install-time scripts (`preinstall`, `postinstall`, `prepare`, etc.). `audit` actively reports any that appear.
 
-[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/raghubetina/learning-moments/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/raghubetina/learning-moments/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/raghubetina/learning-moments/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/raghubetina/learning-moments/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/raghubetina/learning-moments/compare/v0.5.2...v0.5.3

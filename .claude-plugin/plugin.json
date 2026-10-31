@@ -1,7 +1,7 @@
 {
   "name": "learning-moments",
   "displayName": "Learning Moments",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "Brief, situated comprehension checks for AI-assisted changes in Claude Code.",
   "author": {
     "name": "Raghu Betina"
