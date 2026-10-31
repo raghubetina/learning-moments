@@ -86,7 +86,7 @@ describe("ids", () => {
     await fs.writeFile(path.join(root, "untracked.js"), "export const loose = 2;\n");
 
     const context = contextForFiles(root, ["staged.js", "untracked.js"], 4000).text;
-    expect(context).toContain("+export const staged = 1;");
+    expect(context).toContain("export const staged = 1;");
     expect(context).toContain("export const loose = 2;");
   });
 });
@@ -104,7 +104,7 @@ describe("context safety", () => {
     await fs.writeFile(target, secret);
     await fs.symlink(target, path.join(root, "linked.txt"));
 
-    expect(gitHashObjects(root, ["linked.txt"])).toEqual({ "linked.txt": null });
+    expect(gitHashObjects(root, ["linked.txt"])).toEqual({ "linked.txt": "nonfile:symlink" });
     expect(contextForFiles(root, ["linked.txt"], 4000).text).not.toContain(secret);
   });
 
@@ -136,6 +136,49 @@ describe("context safety", () => {
     } finally {
       delete process.env.GIT_ICASE_PATHSPECS;
     }
+  });
+
+  it("does not read the old content of a file replaced by a symlink", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "notes.txt"), "committed-secret-notes\n");
+    git(["add", "notes.txt"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.rm(path.join(root, "notes.txt"));
+    await fs.symlink("/etc/hosts", path.join(root, "notes.txt"));
+
+    const context = contextForFiles(root, ["notes.txt"], 4000);
+    expect(context.text).not.toContain("committed-secret-notes");
+    expect(context.text).not.toContain("localhost");
+  });
+
+  it("falls back to the base tree when a version already seen was pruned", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "app.js"), "one\n");
+    git(["add", "app.js"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.writeFile(path.join(root, "app.js"), "one\ntwo\n");
+    const seen = gitHashObjects(root, ["app.js"], { write: true })["app.js"];
+    git(["prune", "--expire=now"], root);
+    await fs.writeFile(path.join(root, "app.js"), "one\ntwo\nthree\n");
+
+    const context = contextForFiles(root, ["app.js"], 4000, { since: { "app.js": seen } }).text;
+    expect(context).toContain("+two");
+    expect(context).toContain("+three");
+  });
+
+  it("shows a change to only the executable bit", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "run.sh"), "echo hi\n");
+    git(["add", "run.sh"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.chmod(path.join(root, "run.sh"), 0o755);
+
+    const context = contextForFiles(root, ["run.sh"], 4000).text;
+    expect(context).toContain("old mode 100644");
+    expect(context).toContain("new mode 100755");
   });
 
   it("redacts a private key before the context budget can truncate it", async () => {

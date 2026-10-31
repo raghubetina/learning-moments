@@ -389,7 +389,8 @@ describe("hook flow", () => {
 
     const events = await readEvents(root);
     expect(events.filter((event) => event.type === "classifier_called")).toHaveLength(1);
-    expect(events.map((event) => event.type)).toContain("candidate_already_seen");
+    const outcomes = events.filter((event) => event.type === "hook_completed").map((event) => event.outcome);
+    expect(outcomes).toContain("no_new_changes");
     expect(runClaudeStructured).toHaveBeenCalledTimes(1);
   });
 
@@ -1094,5 +1095,157 @@ describe("end-of-turn questions", () => {
     expect(entry("PostToolUse").async).toBe(true);
     expect(entry("Stop").async).toBeUndefined();
     expect(entry("UserPromptSubmit").async).toBeUndefined();
+  });
+});
+
+describe("selecting what changed", () => {
+  const declined = { ...eligibleClassification, eligible: false, delivery: "discard" };
+  const batch = (root) => postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+  const promptOf = (call) => vi.mocked(runClaudeStructured).mock.calls[call][0].prompt;
+  const setup = async (configure) => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    // init's own files stay out of the way of the assertions below.
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-qm", "init"], { cwd: root });
+    if (configure) {
+      const config = await loadConfig(root);
+      configure(config);
+      await writeConfig(root, config);
+    }
+    return root;
+  };
+
+  it("shows only what changed since the classifier last looked", async () => {
+    const root = await setup();
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+
+    await fs.writeFile(path.join(root, "README.md"), "before\nfirst-edit\n");
+    await batch(root);
+    await fs.writeFile(path.join(root, "README.md"), "before\nfirst-edit\nsecond-edit\n");
+    await batch(root);
+
+    expect(promptOf(0)).toContain("+first-edit");
+    expect(promptOf(1)).toContain("+second-edit");
+    expect(promptOf(1)).not.toContain("+first-edit");
+  });
+
+  it("leaves out edits that were already uncommitted when the session began", async () => {
+    const root = await setup();
+    await fs.writeFile(path.join(root, "README.md"), "before\nmine-before-session\n");
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+
+    await fs.writeFile(path.join(root, "README.md"), "before\nmine-before-session\nclaude-edit\n");
+    await batch(root);
+
+    expect(promptOf(0)).toContain("+claude-edit");
+    expect(promptOf(0)).not.toContain("+mine-before-session");
+  });
+
+  it("reaches later files once earlier ones have been reviewed", async () => {
+    const root = await setup((config) => {
+      config.context_limits.max_paths = 1;
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+
+    await fs.writeFile(path.join(root, "a.js"), "export const a = 1;\n");
+    await batch(root);
+    await fs.writeFile(path.join(root, "z.js"), "export const z = 2;\n");
+    await batch(root);
+
+    expect(promptOf(0)).toContain("- a.js");
+    expect(promptOf(1)).toContain("- z.js");
+    expect(promptOf(1)).not.toContain("- a.js");
+  });
+
+  it("leaves files the context limit cut off eligible for the next look", async () => {
+    const root = await setup((config) => {
+      config.context_limits.max_diff_chars = 400;
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+
+    await fs.writeFile(path.join(root, "b.js"), "export const b = 'seen later';\n");
+    await fs.writeFile(path.join(root, "a.js"), `export const a = "${"x".repeat(600)}";\n`);
+    await batch(root);
+    expect(promptOf(0)).not.toContain("seen later");
+
+    await fs.writeFile(path.join(root, "a.js"), "export const a = 1;\n");
+    await batch(root);
+    expect(promptOf(1)).toContain("seen later");
+  });
+
+  it("records the version it showed, not one written while it waited", async () => {
+    const root = await setup();
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "README.md"), "before\nfirst\n");
+
+    // Claude edits the file while this hook waits for the claim lock.
+    const lockDir = path.join(root, ".learning-moments", "locks", "moment-claim.lock");
+    await fs.mkdir(lockDir);
+    await fs.writeFile(path.join(lockDir, "holder.json"), JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }));
+    const pending = batch(root);
+    // Long enough for the hook to capture versions and reach the lock,
+    // well inside the lock's 5-second acquisition timeout.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await fs.writeFile(path.join(root, "README.md"), "before\nfirst\nsecond\n");
+    await fs.rm(lockDir, { recursive: true });
+    await pending;
+
+    await batch(root);
+    expect(promptOf(0)).not.toContain("second");
+    expect(promptOf(1)).toContain("+second");
+  });
+
+  it("starts reviewed versions over when the baseline resets", async () => {
+    const root = await setup();
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "README.md"), "reviewed-before-commit\n");
+    await batch(root);
+
+    await fs.writeFile(path.join(root, "README.md"), "committed-version\n");
+    execFileSync("git", ["commit", "-qam", "commit"], { cwd: root });
+    await batch(root); // HEAD moved: the baseline resets
+    await fs.writeFile(path.join(root, "README.md"), "committed-version\nafter-reset\n");
+    await batch(root);
+
+    expect(promptOf(1)).toContain("+after-reset");
+    expect(promptOf(1)).not.toContain("+committed-version");
+    expect(promptOf(1)).not.toContain("reviewed-before-commit");
+  });
+
+  it("tells the classifier which questions were asked recently", async () => {
+    const root = await setup((config) => {
+      config.frequency.minimum_minutes_between_immediate_prompts = 0;
+      config.frequency.immediate_prompts_per_hour = 10;
+    });
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await batchThenStop(hookInput(root));
+    await reply(root, "skip");
+
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "README.md"), "after again\n");
+    await batch(root);
+    expect(promptOf(1)).toContain("Questions already asked recently");
+    expect(promptOf(1)).toContain("- What does the change do?");
+    expect(promptOf(0)).not.toContain("Questions already asked recently");
   });
 });

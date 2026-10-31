@@ -1,4 +1,56 @@
+import fs from "node:fs";
+import path from "node:path";
 import { shortId } from "./ids.js";
+
+/**
+ * Per file, the version this session's classifier last looked at, as
+ * recorded by `classifier_called` events since the session's latest
+ * baseline. A new baseline (after HEAD or the branch moved) starts over,
+ * since versions reviewed before it describe a different history.
+ *
+ * @returns {Record<string, string | null>}
+ */
+export function reviewedVersions(events, sessionId) {
+  /** @type {Record<string, string | null>} */
+  let out = {};
+  for (const event of events) {
+    if (event.session_id !== sessionId) continue;
+    if (event.type === "session_baseline_created") out = {};
+    else if (event.type === "classifier_called" && event.reviewed && typeof event.reviewed === "object") {
+      Object.assign(out, event.reviewed);
+    }
+  }
+  return out;
+}
+
+/** Files ordered by modification time, newest first; deleted files lead. */
+export function newestFirst(root, files) {
+  const mtime = (file) => {
+    try {
+      return fs.lstatSync(path.join(root, file)).mtimeMs;
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  };
+  return files
+    .map((file) => ({ file, at: mtime(file) }))
+    .sort((a, b) => b.at - a.at || a.file.localeCompare(b.file))
+    .map((entry) => entry.file);
+}
+
+const RECENT_QUESTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The latest distinct questions selected in this project, newest first. */
+export function recentQuestions(events, limit = 5, now = new Date()) {
+  const out = [];
+  for (const event of [...events].reverse()) {
+    if (out.length >= limit) break;
+    if (!["moment_ready", "moment_injected"].includes(event.type) || typeof event.question !== "string") continue;
+    if (now.getTime() - new Date(event.timestamp).getTime() > RECENT_QUESTION_WINDOW_MS) break;
+    if (!out.includes(event.question)) out.push(event.question);
+  }
+  return out;
+}
 
 export function latestSessionBaseline(events, sessionId) {
   const baseline = [...events].reverse().find(

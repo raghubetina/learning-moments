@@ -3,11 +3,18 @@ import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
 import { candidateFiles } from "../../core/filter.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
-import { changedSinceBaseline, contextForFiles, workspaceContext } from "../../core/git.js";
+import { changedSinceBaseline, contextForFiles, gitHashObjects, workspaceContext } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
-import { latestSessionBaseline, pendingInjectedMoment, pendingReadyMoment } from "../../core/state.js";
+import {
+  latestSessionBaseline,
+  newestFirst,
+  pendingInjectedMoment,
+  pendingReadyMoment,
+  recentQuestions,
+  reviewedVersions
+} from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
 import { resolveProject } from "../../core/project.js";
 
@@ -50,7 +57,8 @@ export async function postToolBatchHook(input) {
   const controlEvents = await readControl(projectRoot);
   // A question already waiting for the end of the turn makes another
   // classification wasted work.
-  if (pendingReadyMoment(await readLedger(projectRoot), parsed.session_id)) {
+  const ledger = await readLedger(projectRoot);
+  if (pendingReadyMoment(ledger, parsed.session_id)) {
     await complete("moment_already_ready");
     return null;
   }
@@ -95,7 +103,7 @@ export async function postToolBatchHook(input) {
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd,
-      snapshot: ctx.toBaseline(),
+      snapshot: ctx.toBaseline({ write: true }),
       reason: "head_or_branch_changed"
     });
     await complete("baseline_reset_head_or_branch_changed");
@@ -105,14 +113,23 @@ export async function postToolBatchHook(input) {
   // Filter again after the comparison: a baseline saved by an older
   // version, or under an older config, can list paths that are excluded
   // now, and their absence from the current snapshot reads as a change.
-  const files = candidateFiles(changedSinceBaseline(baseline, current), config).slice(
-    0,
-    config.context_limits.max_paths
-  );
-  if (files.length === 0) {
-    await complete("no_candidate");
+  const changed = candidateFiles(changedSinceBaseline(baseline, current), config);
+  // Only what changed since this session's classifier last looked. Without
+  // this, a cumulative diff keeps re-showing the same early hunk, crowds
+  // later edits out of the bounded context, and invites the same question
+  // twice.
+  const reviewed = reviewedVersions(controlEvents, parsed.session_id);
+  const fresh = changed.filter((file) => current.hashes[file] !== reviewed[file]);
+  if (fresh.length === 0) {
+    await complete(changed.length === 0 ? "no_candidate" : "no_new_changes");
     return null;
   }
+  const files = newestFirst(workRoot, fresh).slice(0, config.context_limits.max_paths);
+  // Diff against the version last reviewed or, for a file that was already
+  // dirty when the session began, its baseline version, so the context is
+  // this session's work rather than edits from before it.
+  /** @type {Record<string, string | null>} */
+  const since = Object.fromEntries(files.map((file) => [file, reviewed[file] ?? baseline.hashes[file] ?? null]));
 
   // Phase 1 — claim the fingerprint under a brief lock so concurrent hooks
   // can't both pass dedupe and call the classifier twice for the same
@@ -120,8 +137,17 @@ export async function postToolBatchHook(input) {
   // call (default 45s timeout vs. 5s lock acquisition timeout); a slow
   // model call shouldn't make a second hook fail-open just because one
   // request is in flight.
-  const diff = contextForFiles(workRoot, files, config.context_limits.max_diff_chars);
-  const fingerprint = candidateFingerprint(files, diff.text);
+  // Capture each file's version once, as a blob. The context, the
+  // fingerprint, and the reviewed record all describe these exact
+  // versions, even if Claude edits a file while this hook waits on a lock.
+  const versions = gitHashObjects(workRoot, files, { write: true });
+  const diff = contextForFiles(workRoot, files, config.context_limits.max_diff_chars, { versions, since });
+  // Over every selected file's version, not the truncated context, so an
+  // edit past the context limit still counts as new.
+  const fingerprint = candidateFingerprint(files, JSON.stringify(files.map((file) => versions[file] ?? null)));
+  // Only files whose context fit whole count as reviewed; the rest stay
+  // eligible for the next look.
+  const reviewedNow = Object.fromEntries(diff.complete.map((file) => [file, versions[file] ?? null]));
 
   const claim = await withProjectLock(projectRoot, "moment-claim", async () => {
     const lockedControl = await readControl(projectRoot);
@@ -157,7 +183,9 @@ export async function postToolBatchHook(input) {
       transcript_path: parsed.transcript_path,
       cwd: parsed.cwd,
       files,
-      candidate_fingerprint: fingerprint
+      candidate_fingerprint: fingerprint,
+      // Stored as blobs so the next look can diff against exactly these.
+      reviewed: reviewedNow
     });
     return { status: "claimed" };
   });
@@ -173,7 +201,11 @@ export async function postToolBatchHook(input) {
 
   // Slow path — runs OUTSIDE the moment-claim lock so parallel hooks with
   // distinct fingerprints don't serialize on each other's model calls.
-  const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
+  const result = await classifyCandidate(projectRoot, config, {
+    files,
+    diff: diff.text,
+    recentQuestions: recentQuestions(ledger)
+  });
   if (!result || !result.ok) {
     const failureReason = result ? result.reason : "empty_context";
     await appendEvent(projectRoot, {

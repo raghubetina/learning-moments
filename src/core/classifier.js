@@ -114,14 +114,22 @@ async function readTextOrDefault(filePath, fallback) {
 }
 
 function buildClassifierPrompt(profile, input) {
+  const recent = input.recentQuestions ?? [];
   return [
     "User profile:",
     profile.trim(),
     "",
+    ...(recent.length > 0
+      ? [
+          "Questions already asked recently in this project. Do not repeat one or ask about the same point:",
+          ...recent.map((question) => `- ${question}`),
+          ""
+        ]
+      : []),
     "Changed files:",
     input.files.map((file) => `- ${file}`).join("\n"),
     "",
-    "Redacted diff:",
+    "Redacted diff (only what changed since the last look, newest files first):",
     "```diff",
     input.diff,
     "```"
