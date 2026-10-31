@@ -13,7 +13,7 @@ Please keep the package inspectable: source-executed JavaScript, no generated ru
 
 ## Development setup
 
-Requirements are Node 20+, Git, and an authenticated Claude Code installation for manual end-to-end testing.
+Requirements are Node 22+, Git, and an authenticated Claude Code installation for manual end-to-end testing.
 
 ```bash
 git clone https://github.com/raghubetina/learning-moments.git

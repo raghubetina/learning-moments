@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/learning-moments.svg)](https://www.npmjs.com/package/learning-moments)
 [![CI](https://github.com/raghubetina/learning-moments/actions/workflows/ci.yml/badge.svg)](https://github.com/raghubetina/learning-moments/actions/workflows/ci.yml)
-[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
+[![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
 Learning Moments asks brief questions about changes made during a Claude Code session.
@@ -66,7 +66,7 @@ For now, I can say only that it checks comprehension in the moment. I do not yet
 
 ### Requirements
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - Git
 - a recent Claude Code version with Hooks support
 - Claude Code authenticated on your machine
@@ -271,7 +271,7 @@ Learning Moments is designed so you can inspect the code that runs inside your p
 - no bundling, minification, or generated runtime artifact;
 - zero runtime npm dependencies;
 - no npm install-time lifecycle scripts;
-- CI on the declared Node 20 floor;
+- CI on the declared Node 22 floor and on Node 24 and 26;
 - package metadata that identifies this public GitHub repository;
 - npm Trusted Publishing from GitHub Actions, without a long-lived npm publish token;
 - an npm provenance attestation connecting the published package to its source repository and workflow; and
