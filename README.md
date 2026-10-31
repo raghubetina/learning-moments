@@ -39,7 +39,7 @@ Learning Moments is an **early alpha for local testing and research prototypes**
 
 Implemented today:
 
-- project-local installation through Claude Code Hooks;
+- installation as a Claude Code plugin or with npm, acting only in projects you initialize;
 - Git-based detection of changes made during the current Claude Code session;
 - situated **Predict** and **Test** questions, selected in the background with `claude -p` and asked when Claude finishes its turn;
 - answer capture, skipping, structured 0-3 grading, and brief feedback;
@@ -75,27 +75,34 @@ For now, I can say only that it checks comprehension in the moment. I do not yet
 
 Learning Moments calls `claude -p` using your existing Claude Code authentication and model configuration. Those calls can consume usage and may incur provider charges.
 
-### Install
+### Install as a Claude Code plugin
+
+In Claude Code:
+
+```text
+/plugin install learning-moments --marketplace raghubetina/learning-moments
+```
+
+The marketplace in this repository installs the published npm package, so the plugin is the same provenance-attested files that `learning-moments audit` checks, fetched without install scripts. Claude Code doesn't auto-update third-party marketplaces by default: turn on **Enable auto-update** for this marketplace under `/plugin` → **Marketplaces**, or run `claude plugin update learning-moments@learning-moments` in a shell after a release and then `/reload-plugins`.
+
+The plugin acts only in projects where you turn it on. Open Claude Code in a project and run:
+
+```text
+/learning-moments:init
+```
+
+That creates `.learning-moments/` for the project and ignores it in the repository's `.git/info/exclude`. The plugin supplies the hooks and the `/learning-moments:*` commands.
+
+### Install with npm
 
 ```bash
 npm install -g learning-moments
-```
-
-Initialize it in a project where you use Claude Code:
-
-```bash
 cd /path/to/your/project
 learning-moments init
 learning-moments doctor
 ```
 
-Then start Claude Code normally:
-
-```bash
-claude
-```
-
-`init` creates project-local configuration under `.learning-moments/`, adds that directory to `.gitignore`, installs hooks in `.claude/settings.local.json`, and creates `/learning-moments:*` command prompts. It is safe to rerun after an upgrade.
+`init` creates `.learning-moments/`, installs hooks in `.claude/settings.local.json`, writes `/learning-moments:*` commands, and ignores both in `.git/info/exclude`. The hooks and commands run this install's absolute `src/cli.js` path, so after upgrading Node or the package, run `init` again; `learning-moments doctor` reports hooks that point at a missing or older install. If you later switch to the plugin, run `/learning-moments:init` once in each project to remove the settings hooks, so hooks don't run twice.
 
 By default, Learning Moments asks at most **one question per hour**, with at least **20 minutes between questions**. It is intentionally not triggered by every edit.
 
@@ -105,7 +112,7 @@ When you just need to get work done, pause it from Claude Code:
 /learning-moments:pause
 ```
 
-Resume later with `/learning-moments:resume`. The equivalent shell commands are `learning-moments pause --project` and `learning-moments resume --project`. Pausing does not uninstall the hooks or delete your learning record.
+Resume later with `/learning-moments:resume`. Pausing does not uninstall the hooks or delete your learning record. To ask for a question when it suits you, run `/learning-moments:verify`.
 
 ### Try it without automatic questions
 
@@ -129,7 +136,7 @@ node src/cli.js init
 node src/cli.js doctor
 ```
 
-Hooks installed this way point to that checkout's absolute `src/cli.js` path, so you can inspect or pin the exact implementation being executed.
+Hooks installed this way point to that checkout's absolute `src/cli.js` path, so you can inspect or pin the exact implementation being executed. To load the checkout as a plugin for one session instead, run `claude --plugin-dir /path/to/learning-moments` and `/learning-moments:init`.
 
 ## How it works
 

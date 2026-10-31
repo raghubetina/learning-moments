@@ -7,7 +7,7 @@ import { cliPath } from "./path-self.js";
 // `async` hooks run in the background, so Claude never waits on them.
 // Selecting a question takes a model call; it runs after each tool batch
 // in the background, and Stop asks the question when the turn ends.
-const hookSpecs = [
+export const hookSpecs = [
   { event: "PostToolUse", matcher: "Edit|Write", action: "post-tool-use", async: true },
   { event: "PostToolBatch", action: "post-tool-batch", async: true },
   // UserPromptSubmit command hooks default to a 30-second timeout in Claude
@@ -23,11 +23,15 @@ function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function makeHookEntry(spec) {
+/**
+ * @param {{ action: string, timeout?: number, async?: boolean }} spec
+ * @param {string} [cli] the CLI path; the plugin passes `${CLAUDE_PLUGIN_ROOT}/src/cli.js`
+ */
+export function makeHookEntry(spec, cli = cliPath()) {
   return {
     type: "command",
     command: "node",
-    args: [cliPath(), "hook", spec.action],
+    args: [cli, "hook", spec.action],
     ...(spec.timeout ? { timeout: spec.timeout } : {}),
     ...(spec.async ? { async: true } : {})
   };

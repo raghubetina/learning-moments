@@ -11,6 +11,9 @@
   },
   "files": [
     "src/",
+    ".claude-plugin/plugin.json",
+    "hooks/",
+    "skills/",
     "MANIFEST.json",
     "README.md",
     "CHANGELOG.md",
@@ -24,10 +27,12 @@
     "audit": "node src/cli.js audit",
     "build-manifest": "node scripts/build-manifest.js",
     "release-verify": "node scripts/release-verify.js",
-    "release": "node scripts/build-manifest.js && tsc --noEmit && vitest run && node src/cli.js audit && node scripts/release-verify.js"
+    "release": "node scripts/build-plugin.js && node scripts/build-manifest.js && tsc --noEmit && vitest run && node src/cli.js audit && node scripts/release-verify.js",
+    "build-plugin": "node scripts/build-plugin.js"
   },
   "keywords": [
     "claude-code",
+    "claude-code-plugin",
     "claude-code-hooks",
     "hooks",
     "learning",

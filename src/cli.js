@@ -28,7 +28,9 @@ Usage:
   learning-moments <command> [options]
 
 Commands:
-  init [--shared] [--observe-only]   Initialize Learning Moments in the current Git project
+  init [--plugin] [--shared] [--observe-only]
+                                      Initialize Learning Moments in the current Git project
+                                      (--plugin: hooks come from the Claude Code plugin)
   doctor                              Check Learning Moments installation
   status                              Show Learning Moments status
   metrics [--json] [--since <w>] [--session <id>]
@@ -79,9 +81,10 @@ const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} *
   async init(args) {
     const { values } = parse(args, {
       shared: { type: "boolean" },
+      plugin: { type: "boolean" },
       "observe-only": { type: "boolean" }
     });
-    await initCommand({ shared: values.shared, observeOnly: values["observe-only"] });
+    await initCommand({ shared: values.shared, plugin: values.plugin, observeOnly: values["observe-only"] });
   },
 
   async doctor() {
