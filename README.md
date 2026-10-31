@@ -11,6 +11,8 @@ Learning Moments asks brief questions about changes made during a Claude Code se
 
 AI coding agents can inspect a codebase, plan a change, edit files, run tests, and summarize the result. Their speed also makes it easy to move on before tracing the code, predicting its behavior, or deciding how to test it.
 
+The approach is borrowed from aviation. As autopilots took over routine flying, the FAA warned airlines that "continuous use of those systems does not reinforce a pilot's knowledge and skills in manual flight operations" and urged them to make sure pilots keep practicing by hand ([SAFO 13002](https://www.faa.gov/sites/faa.gov/files/other_visit/aviation_industry/airline_operators/airline_safety/SAFO13002.pdf), 2013; see also the [Flight Deck Automation Working Group report](https://www.faa.gov/sites/faa.gov/files/aircraft/air_cert/design_approvals/human_factors/OUFPMS_Report.pdf)). Learning Moments applies the same idea to AI-assisted programming: keep the automation, and keep exercising the skills it would otherwise replace.
+
 After a meaningful change, Learning Moments may ask one short question about the files you are working on:
 
 > **Learning Moment `lm_a7f3`**
@@ -332,8 +334,9 @@ Learning Opportunities provides longer exercises and guided exploration. StaySha
 
 Learning Moments starts from a narrow concern: AI assistance can reduce opportunities to rehearse the comprehension and judgment routines developers still need to supervise and maintain software.
 
-The design draws on several lines of research:
+The design draws on aviation safety guidance and several lines of research:
 
+- aviation guidance on keeping manual flying skills alongside autopilot use ([FAA SAFO 13002](https://www.faa.gov/sites/faa.gov/files/other_visit/aviation_industry/airline_operators/airline_safety/SAFO13002.pdf) and the [PARC/CAST Flight Deck Automation Working Group report](https://www.faa.gov/sites/faa.gov/files/aircraft/air_cert/design_approvals/human_factors/OUFPMS_Report.pdf));
 - [skill decay under nonuse](https://doi.org/10.1207/s15327043hup1101_3);
 - [the out-of-the-loop problem in automation](https://doi.org/10.1518/001872095779064555);
 - [retrieval practice and long-term retention](https://doi.org/10.1111/j.1467-9280.2006.01693.x);
