@@ -19,6 +19,7 @@ import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
 import { runHook } from "../src/core/hook-runner.js";
 import { appendEvent, readEvents } from "../src/core/log.js";
+import { classifyReply } from "../src/core/reply.js";
 
 let previousCwd;
 
@@ -807,5 +808,161 @@ describe("hook flow", () => {
 
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).toContain("feedback_observed");
+  });
+});
+
+async function injectMoment(root) {
+  vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+  await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+  await fs.writeFile(path.join(root, "README.md"), `after ${Math.random()}\n`);
+  const output = await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+  expect(output?.hookSpecificOutput.additionalContext).toContain("What does the change do?");
+}
+
+const reply = (root, prompt) => userPromptSubmitHook(hookInput(root, { hook_event_name: "UserPromptSubmit", prompt }));
+
+describe("classifyReply", () => {
+  it.each([
+    ["/learning-moments:pause", "pause"],
+    ["/compact focus on tests", "command"],
+    ["/dev/null is where the output goes", "answer"],
+    ["<task-notification><task-id>abc</task-id>", "automatic"],
+    ["skip", "skip"],
+    ["Not now.", "skip"],
+    ["pass the token through the job instead", "answer"],
+    ["Proceed", "continue"],
+    ["I'm not sure", "dont_know"],
+    ["idk, maybe it retries?", "dont_know"],
+    ["It reverts only on network errors, because fetch resolves on a 422", "answer"]
+  ])("%s -> %s", (text, kind) => {
+    expect(classifyReply(text)).toBe(kind);
+  });
+});
+
+describe("answer capture", () => {
+  it("treats the pause command as declining the question, without grading it", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+
+    expect(await reply(root, "/learning-moments:pause")).toBeNull();
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "skip_recorded")?.skip_kind).toBe("pause");
+    expect(events.map((event) => event.type)).not.toContain("answer_received");
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the question open across other commands and automatic prompts", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+
+    expect(await reply(root, "/compact")).toBeNull();
+    expect(await reply(root, "<task-notification>agent finished</task-notification>")).toBeNull();
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 3, label: "correct", feedback: "Right.", reason: "Matches.", confidence: 0.9 },
+      metrics: testMetrics
+    });
+    const output = await reply(root, "It changes the README text");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("Right.");
+    const answers = (await readEvents(root)).filter((event) => event.type === "answer_received");
+    expect(answers.map((event) => event.answer_text)).toEqual(["It changes the README text"]);
+  });
+
+  it("keeps a seen question open when a command's turn ends without its ID", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    const stop = (message) => stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: message }));
+    const shortId = (await readEvents(root)).find((event) => event.type === "moment_injected").short_id;
+
+    await stop(`Learning Moment ${shortId}: What does the change do?`);
+    expect(await reply(root, "/learning-moments:status")).toBeNull();
+    await stop("Learning Moments is enabled.");
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 2, label: "partially_correct", feedback: "Close.", reason: "Partly.", confidence: 0.8 },
+      metrics: testMetrics
+    });
+    expect((await reply(root, "It edits the README"))?.hookSpecificOutput.additionalContext).toContain("Close.");
+    const events = await readEvents(root);
+    expect(events.map((event) => event.type)).not.toContain("moment_injection_missed");
+  });
+
+  it("explains instead of grading when the developer says they don't know", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+
+    const output = await reply(root, "I'm not sure");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("It changes the file.");
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+    const grade = (await readEvents(root)).find((event) => event.type === "grade_created");
+    expect(grade).toMatchObject({ label: "dont_know", source: "rule" });
+  });
+
+  it("records a skip when the developer just asks Claude to continue", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+
+    expect(await reply(root, "Proceed")).toBeNull();
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "skip_recorded")?.skip_kind).toBe("continue");
+    expect(events.map((event) => event.type)).not.toContain("grade_created");
+  });
+
+  it("gives no feedback when the grader finds the message was not an answer", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 0, label: "not_an_answer", feedback: "", reason: "A new instruction.", confidence: 0.9 },
+      metrics: testMetrics
+    });
+
+    expect(await reply(root, "Now rename the helper and update its callers")).toBeNull();
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "grade_created")?.label).toBe("not_an_answer");
+    expect(events.map((event) => event.type)).not.toContain("feedback_injected");
+  });
+
+  it("stops treating messages as answers once a question is two hours old", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, {
+      type: "moment_injected",
+      moment_id: "lm_moment_old_abcd",
+      short_id: "lm_abcd",
+      session_id: "session-1",
+      question: "Old question?",
+      timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+    });
+
+    expect(await reply(root, "Something unrelated")).toBeNull();
+    expect(runClaudeStructured).not.toHaveBeenCalled();
+  });
+
+  it("does not ask a second question while one is still open", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const config = await loadConfig(root);
+    config.frequency.minimum_minutes_between_immediate_prompts = 0;
+    config.frequency.immediate_prompts_per_hour = 10;
+    await writeConfig(root, config);
+    await injectMoment(root);
+
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "README.md"), "a second change\n");
+    expect(await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }))).toBeNull();
+    const silenced = (await readEvents(root)).find((event) => event.type === "moment_silenced");
+    expect(silenced?.reason).toBe("question_pending");
   });
 });

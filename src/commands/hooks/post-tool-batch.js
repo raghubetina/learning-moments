@@ -7,7 +7,7 @@ import { changedSinceBaseline, contextForFiles, workspaceContext } from "../../c
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
-import { latestSessionBaseline } from "../../core/state.js";
+import { latestSessionBaseline, pendingInjectedMoment } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
 import { resolveProject } from "../../core/project.js";
 
@@ -234,16 +234,21 @@ export async function postToolBatchHook(input) {
     });
 
     const lockedLedger = await readLedger(projectRoot);
+    // One open question per session: a second would make it ambiguous
+    // which one the next message answers.
+    const questionPending = pendingInjectedMoment(lockedLedger, parsed.session_id) !== null;
     const canInject =
       config.mode === "active" &&
       classification.delivery === "active" &&
       classification.timing === "ask_now" &&
+      !questionPending &&
       immediatePromptBudgetAvailable(lockedLedger, config);
 
     if (!canInject) {
       let reason;
       if (config.mode === "observe_only") reason = "observe_only";
       else if (classification.timing !== "ask_now") reason = "ask_later";
+      else if (questionPending) reason = "question_pending";
       else reason = "budget_or_delivery";
       await appendEvent(projectRoot, {
         type: "moment_silenced",

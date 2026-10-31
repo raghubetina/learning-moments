@@ -12,7 +12,14 @@ import {
   assertString
 } from "./validate.js";
 
-const GRADE_LABELS = ["correct", "partially_correct", "likely_incorrect", "unclear"];
+const GRADE_LABELS = [
+  "correct",
+  "partially_correct",
+  "likely_incorrect",
+  "unclear",
+  "dont_know",
+  "not_an_answer"
+];
 
 function parseGradeOutput(raw, loc = "grade") {
   const obj = assertObject(raw, loc);
@@ -65,7 +72,13 @@ function buildGradePrompt(input) {
     "Changed files:",
     input.files.map((file) => `- ${file}`).join("\n"),
     "",
-    "User answer:",
+    // Stated here rather than in the editable policy file so that policy
+    // files written by older versions still get these labels right.
+    "Labels: use not_an_answer when the message does not attempt the question at all (a new",
+    "instruction, a request to continue, an unrelated question). Use dont_know when the user",
+    "says they don't know. Neither is a wrong answer.",
+    "",
+    "User message:",
     input.answer
   ].join("\n");
 }

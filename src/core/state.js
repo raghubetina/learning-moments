@@ -10,7 +10,11 @@ export function latestSessionBaseline(events, sessionId) {
   return baseline.snapshot;
 }
 
-export function pendingInjectedMoment(events, sessionId) {
+// A question nobody answered within this window no longer captures the
+// next message: hours later, that message is about something else.
+export const PENDING_ANSWER_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+export function pendingInjectedMoment(events, sessionId, now = new Date()) {
   const closed = new Set();
   for (const event of events) {
     const momentId = typeof event.moment_id === "string" ? event.moment_id : undefined;
@@ -24,7 +28,8 @@ export function pendingInjectedMoment(events, sessionId) {
       event.type === "moment_injected" &&
       event.session_id === sessionId &&
       typeof event.moment_id === "string" &&
-      !closed.has(event.moment_id)
+      !closed.has(event.moment_id) &&
+      now.getTime() - new Date(event.timestamp).getTime() <= PENDING_ANSWER_WINDOW_MS
   );
   if (!injected || typeof injected.moment_id !== "string") {
     return null;
