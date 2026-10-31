@@ -10,23 +10,25 @@ permissions:
   contents: read
 
 jobs:
-  test-floor:
-    name: Tests + audit on Node 20 (declared minimum)
+  test:
+    name: Tests + audit on Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor declared in package.json `engines`; 24 is the
+        # Node line the publish workflow uses; 26 is the current release.
+        node-version: ["22", "24", "26"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Pinned to the floor declared in package.json `engines`. The publish
-      # workflow uses Node 24 (required for Trusted Publishing's npm 11+
-      # OIDC path), so this is the only CI surface that exercises the
-      # minimum runtime users could be on. If we want broader matrix
-      # coverage later, add 22 and 24 here.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies without running lifecycle scripts
         run: npm ci --ignore-scripts

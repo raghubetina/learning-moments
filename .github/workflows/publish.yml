@@ -39,6 +39,11 @@ jobs:
       - name: Install dependencies without running lifecycle scripts
         run: npm ci --ignore-scripts
 
+      # The package ships no runtime dependencies, so this gate covers the
+      # development toolchain that builds, tests, and verifies the release.
+      - name: Check npm advisories
+        run: npm audit --audit-level=high
+
       - name: Verify tag matches package version
         run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
 

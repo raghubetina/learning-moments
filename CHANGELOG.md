@@ -4,6 +4,12 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Changed
+
+- Raised the minimum Node.js version from 20 to 22. Node 20 reached end of life on 2026-04-30, and current Vitest requires Node 22.12 or newer. The runtime code is unchanged.
+- CI now runs on Node 22, 24, and 26. The publish workflow now fails on high-severity npm advisories in the development toolchain.
+- Updated TypeScript to 7, Vitest to 5, and Node type definitions to the Node 22 line. Dependabot no longer proposes major `@types/node` updates ahead of the runtime floor.
+
 ## [0.5.5] - 2026-07-10
 
 Documentation-only patch clarifying the product's user-control design.

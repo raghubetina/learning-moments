@@ -184,6 +184,7 @@ export async function auditCommand(options = {}) {
 
   const manifestResult = await readManifest();
   const manifest = manifestResult.ok ? manifestResult.data : null;
+  /** @type {{path: string, status: string, expected: string | null, actual: string | null, match: boolean}[] | null} */
   let verification = null;
   if (manifest) {
     const expectedFiles = manifest.files ?? {};

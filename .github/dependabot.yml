@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Node type definitions track the runtime floor in package.json
+      # `engines`, so static checking can't bless APIs newer than the
+      # oldest supported Node. Raise this major together with the floor.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
