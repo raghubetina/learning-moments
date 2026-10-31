@@ -1,12 +1,12 @@
 {
   "name": "learning-moments",
   "version": "0.5.5",
-  "generatedAt": "2026-10-31T15:52:52.151Z",
+  "generatedAt": "2026-10-31T17:04:44.412Z",
   "files": {
     "AUDIT.md": "8fd78e0292b1b33ea152ec82651a43fff94e5a1e61687a046b74d9f48abf2d51",
     "CHANGELOG.md": "756791c825acb50311687ee3a31ae9e69f39e81e1a7e69cdba0cfdbae08ad438",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
-    "README.md": "cf3416870a2c36a8da0dbddaa904acd923af4b2f848168fa6e8fdebebb0839b5",
+    "README.md": "dfa615d1a13a7a34d884327f0423a1dcad6560c8b923af803167f1861a7f45fb",
     "SECURITY.md": "a41cccf7f487e4d60f5f4e128dc3d742fe7499789169ee7a39c4ec46caa87502",
     "package.json": "fc88f249e8c60a4456beedde39fd45f73aa36342fd5af2d6c795f949a3aaff30",
     "src/cli.js": "ded780d9b1c3f3093f5214ba8fd1bcfe928b2847ca9d491e8e5f8cac7b7932f0",
