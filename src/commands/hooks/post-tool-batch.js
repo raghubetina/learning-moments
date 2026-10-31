@@ -13,6 +13,7 @@ import {
   pendingInjectedMoment,
   pendingReadyMoment,
   recentQuestions,
+  reviewedAt,
   reviewedVersions
 } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
@@ -124,7 +125,14 @@ export async function postToolBatchHook(input) {
     await complete(changed.length === 0 ? "no_candidate" : "no_new_changes");
     return null;
   }
-  const files = newestFirst(workRoot, fresh).slice(0, config.context_limits.max_paths);
+  // Least recently looked at first (never first of all), newest first
+  // among ties: a file just shown moves to the back, so no file, however
+  // large or often edited, can hold the bounded context while others wait.
+  const lastLook = reviewedAt(controlEvents, parsed.session_id);
+  const order = new Map(newestFirst(workRoot, fresh).map((file, index) => [file, index]));
+  const files = [...fresh]
+    .sort((a, b) => (lastLook[a] ?? -1) - (lastLook[b] ?? -1) || Number(order.get(a)) - Number(order.get(b)))
+    .slice(0, config.context_limits.max_paths);
   // Diff against the version last reviewed or, for a file that was already
   // dirty when the session began, its baseline version, so the context is
   // this session's work rather than edits from before it.
@@ -145,8 +153,8 @@ export async function postToolBatchHook(input) {
   // Over every selected file's version, not the truncated context, so an
   // edit past the context limit still counts as new.
   const fingerprint = candidateFingerprint(files, JSON.stringify(files.map((file) => versions[file] ?? null)));
-  // Only files whose context fit whole count as reviewed; the rest stay
-  // eligible for the next look.
+  // Only files the context covered count as reviewed (see contextForFiles);
+  // the rest stay eligible and go first next time.
   const reviewedNow = Object.fromEntries(diff.complete.map((file) => [file, versions[file] ?? null]));
 
   const claim = await withProjectLock(projectRoot, "moment-claim", async () => {

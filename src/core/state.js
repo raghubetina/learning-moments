@@ -23,6 +23,25 @@ export function reviewedVersions(events, sessionId) {
   return out;
 }
 
+/**
+ * When this session's classifier last looked at each file, since the
+ * session's latest baseline (epoch ms).
+ *
+ * @returns {Record<string, number>}
+ */
+export function reviewedAt(events, sessionId) {
+  /** @type {Record<string, number>} */
+  let out = {};
+  for (const event of events) {
+    if (event.session_id !== sessionId) continue;
+    if (event.type === "session_baseline_created") out = {};
+    else if (event.type === "classifier_called" && event.reviewed && typeof event.reviewed === "object") {
+      for (const file of Object.keys(event.reviewed)) out[file] = new Date(event.timestamp).getTime();
+    }
+  }
+  return out;
+}
+
 /** Files ordered by modification time, newest first; deleted files lead. */
 export function newestFirst(root, files) {
   const mtime = (file) => {
