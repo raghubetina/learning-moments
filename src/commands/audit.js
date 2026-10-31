@@ -219,6 +219,12 @@ export async function auditCommand(options = {}) {
     project
   };
 
+  // Decided before choosing the output format, so automation reading the
+  // JSON gets the same failing exit status as a person reading the text.
+  if (!verification || verification.some((v) => v.status !== "match")) {
+    process.exitCode = 1;
+  }
+
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;

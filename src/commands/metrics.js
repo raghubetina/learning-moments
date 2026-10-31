@@ -88,6 +88,33 @@ function reasons(counts) {
   return entries.length === 0 ? "" : ` (${entries.map(([reason, n]) => `${reason} ${n}`).join(", ")})`;
 }
 
+// Hooks Claude waits on. The others run in the background.
+const SYNCHRONOUS_HOOKS = ["SessionStart", "UserPromptSubmit", "Stop"];
+const ANSWER_LABELS = ["correct", "partially_correct", "likely_incorrect", "unclear"];
+
+function latency(durations) {
+  return {
+    runs: durations.length,
+    median_ms: percentile(durations, 50),
+    p95_ms: percentile(durations, 95)
+  };
+}
+
+/**
+ * The grade that stands for each question: the latest manual override, or
+ * else the latest automatic grade. Background grading can finish after an
+ * override, and must not replace it.
+ */
+function effectiveGrades(events) {
+  const automatic = new Map();
+  const manual = new Map();
+  for (const event of events) {
+    if (event.type !== "grade_created" || typeof event.moment_id !== "string") continue;
+    (event.source === "manual_override" ? manual : automatic).set(event.moment_id, event);
+  }
+  return [...new Map([...automatic, ...manual]).values()];
+}
+
 export async function metricsCommand(options) {
   const { dataRoot: projectRoot } = await requireProject();
   const windowMs = sinceMs(options.since);
@@ -97,18 +124,38 @@ export async function metricsCommand(options) {
     const sessionMatches = !options.session || event.session_id === options.session;
     return Number.isFinite(timestamp) && timestamp >= cutoff && sessionMatches;
   });
+  const ofType = (type) => events.filter((event) => event.type === type);
 
-  const hookEvents = events.filter((event) => event.type === "hook_completed");
+  const hookEvents = ofType("hook_completed");
   const hookDurations = hookEvents.map((event) => numberValue(event.duration_ms));
-  const classifierCompleted = events.filter((event) => event.type === "classifier_completed");
-  const graderCompleted = events.filter((event) => event.type === "grader_completed");
-  const classifierFailed = events.filter((event) => event.type === "classifier_failed_open");
-  const graderFailed = events.filter((event) => event.type === "grader_failed_open");
+  /** @type {Record<string, ReturnType<typeof latency>>} */
+  const byEvent = {};
+  for (const name of new Set(hookEvents.map((event) => String(event.hook_event_name)))) {
+    byEvent[name] = latency(hookEvents.filter((event) => event.hook_event_name === name).map((event) => numberValue(event.duration_ms)));
+  }
+  const waited = latency(
+    hookEvents.filter((event) => SYNCHRONOUS_HOOKS.includes(String(event.hook_event_name))).map((event) => numberValue(event.duration_ms))
+  );
+
+  const classifierCompleted = ofType("classifier_completed");
+  const graderCompleted = ofType("grader_completed");
+  const classifierFailed = ofType("classifier_failed_open");
+  const graderFailed = ofType("grader_failed_open");
   // Failed calls carry metrics when they ran long enough to be billed or
   // timed; count their cost and time alongside completed calls.
   const withMetrics = (event) => event.metrics && typeof event.metrics === "object";
   const classifierMetrics = summarizeClaude([...classifierCompleted, ...classifierFailed.filter(withMetrics)]);
   const graderMetrics = summarizeClaude([...graderCompleted, ...graderFailed.filter(withMetrics)]);
+
+  const answers = ofType("answer_received");
+  const grades = effectiveGrades(events);
+  const scored = grades.filter((event) => ANSWER_LABELS.includes(String(event.label)) || event.source === "manual_override");
+  const distribution = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  for (const event of scored) {
+    if (typeof event.grade === "number" && event.grade in distribution) distribution[event.grade] += 1;
+  }
+  const asked = ofType("moment_injected").length;
+  const totalCost = classifierMetrics.total_cost_usd + graderMetrics.total_cost_usd;
 
   const summary = {
     projectRoot,
@@ -119,15 +166,19 @@ export async function metricsCommand(options) {
       by_event: countBy(hookEvents, "hook_event_name"),
       by_outcome: countBy(hookEvents, "outcome"),
       median_duration_ms: percentile(hookDurations, 50),
-      p95_duration_ms: percentile(hookDurations, 95)
+      p95_duration_ms: percentile(hookDurations, 95),
+      latency_by_event: byEvent,
+      claude_waited: waited
     },
     classifier: {
-      calls: events.filter((event) => event.type === "classifier_called").length,
+      // Completed plus failed calls, which persist, rather than the
+      // classifier_called claims that control-log pruning removes.
+      calls: classifierCompleted.length + classifierFailed.length,
       completed: classifierCompleted.length,
-      declined: events.filter((event) => event.type === "classifier_declined").length,
+      declined: ofType("classifier_declined").length,
       failed_open: classifierFailed.length,
       failure_reasons: countBy(classifierFailed, "failure_reason"),
-      duplicate_candidates: events.filter((event) => event.type === "candidate_already_seen").length,
+      duplicate_candidates: ofType("candidate_already_seen").length,
       avg_wall_duration_ms: avg(classifierMetrics.wall_duration_ms, classifierMetrics.calls),
       total_cost_usd: classifierMetrics.total_cost_usd,
       input_tokens: classifierMetrics.input_tokens,
@@ -147,10 +198,20 @@ export async function metricsCommand(options) {
       cache_read_input_tokens: graderMetrics.cache_read_input_tokens
     },
     user: {
-      moments_injected: events.filter((event) => event.type === "moment_injected").length,
-      answered: events.filter((event) => event.type === "answer_received").length,
-      skipped: events.filter((event) => event.type === "skip_recorded").length,
-      grades: events.filter((event) => event.type === "grade_created").length
+      moments_injected: asked,
+      answered: answers.filter((event) => event.answer_kind !== "dont_know").length,
+      dont_know: answers.filter((event) => event.answer_kind === "dont_know").length,
+      skipped: ofType("skip_recorded").length,
+      skipped_by_kind: countBy(ofType("skip_recorded"), "skip_kind"),
+      not_an_answer: grades.filter((event) => event.label === "not_an_answer").length,
+      expired: ofType("moment_expired").length,
+      grades: scored.length,
+      grade_distribution: distribution,
+      mean_grade: scored.length === 0 ? null : scored.reduce((sum, event) => sum + numberValue(event.grade), 0) / scored.length
+    },
+    cost: {
+      total_usd: totalCost,
+      per_question_asked_usd: asked === 0 ? null : totalCost / asked
     }
   };
 
@@ -159,36 +220,40 @@ export async function metricsCommand(options) {
     return;
   }
 
+  const rate = (n) => (asked === 0 ? "" : ` (${Math.round((100 * n) / asked)}%)`);
+  const u = summary.user;
   console.log(`Learning Moments metrics (${summary.since})`);
   console.log("");
-  console.log("Workflow impact:");
-  console.log(`  runs: ${summary.hooks.total}`);
-  console.log(`  median added time: ${ms(summary.hooks.median_duration_ms)}`);
-  console.log(`  p95 added time: ${ms(summary.hooks.p95_duration_ms)}`);
-  console.log(`  outcomes: ${JSON.stringify(summary.hooks.by_outcome)}`);
+  console.log("Questions:");
+  console.log(`  asked: ${asked}`);
+  console.log(`  answered: ${u.answered}${rate(u.answered)}`);
+  console.log(`  "don't know": ${u.dont_know}${rate(u.dont_know)}`);
+  console.log(`  skipped: ${u.skipped}${rate(u.skipped)}${reasons(u.skipped_by_kind)}`);
+  console.log(`  not an answer: ${u.not_an_answer}`);
+  console.log(`  selected but never asked (expired): ${u.expired}`);
+  if (u.grades > 0) {
+    const d = u.grade_distribution;
+    console.log(`  grades: 3=${d[3]} 2=${d[2]} 1=${d[1]} 0=${d[0]} (mean ${(u.mean_grade ?? 0).toFixed(2)})`);
+  }
   console.log("");
-  console.log("Moment selection:");
-  console.log(`  attempts: ${summary.classifier.calls}`);
-  console.log(`  checked: ${summary.classifier.completed}`);
+  console.log("Time:");
+  console.log(`  Claude waited on Learning Moments: median ${ms(waited.median_ms)}, p95 ${ms(waited.p95_ms)} over ${waited.runs} hook runs`);
+  console.log(`  question selection (in the background): ${summary.classifier.calls} calls, avg ${seconds(summary.classifier.avg_wall_duration_ms)}`);
+  console.log(`  grading (in the background): ${summary.grader.calls} calls, avg ${seconds(summary.grader.avg_wall_duration_ms)}`);
+  console.log("");
+  console.log("Question selection:");
   console.log(`  no question needed: ${summary.classifier.declined}`);
   console.log(
     `  selection failures that did not interrupt you: ${summary.classifier.failed_open}${reasons(summary.classifier.failure_reasons)}`
   );
   console.log(`  repeated changes skipped: ${summary.classifier.duplicate_candidates}`);
-  console.log(`  avg latency: ${seconds(summary.classifier.avg_wall_duration_ms)}`);
-  console.log(`  estimated cost: ${usd(summary.classifier.total_cost_usd)}`);
-  console.log("");
-  console.log("Answer feedback:");
-  console.log(`  attempts: ${summary.grader.calls}`);
   console.log(
-    `  feedback failures that did not interrupt you: ${summary.grader.failed_open}${reasons(summary.grader.failure_reasons)}`
+    `  grading failures that did not interrupt you: ${summary.grader.failed_open}${reasons(summary.grader.failure_reasons)}`
   );
-  console.log(`  avg latency: ${seconds(summary.grader.avg_wall_duration_ms)}`);
-  console.log(`  estimated cost: ${usd(summary.grader.total_cost_usd)}`);
   console.log("");
-  console.log("User:");
-  console.log(`  questions asked: ${summary.user.moments_injected}`);
-  console.log(`  answered: ${summary.user.answered}`);
-  console.log(`  skipped: ${summary.user.skipped}`);
-  console.log(`  feedback grades: ${summary.user.grades}`);
+  console.log("Estimated cost:");
+  console.log(`  selection ${usd(summary.classifier.total_cost_usd)}, grading ${usd(summary.grader.total_cost_usd)}, total ${usd(totalCost)}`);
+  if (summary.cost.per_question_asked_usd !== null) {
+    console.log(`  per question asked: ${usd(summary.cost.per_question_asked_usd)}`);
+  }
 }

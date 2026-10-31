@@ -19,6 +19,10 @@ import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
 import { gradeCommand } from "../src/commands/grade.js";
+import { metricsCommand } from "../src/commands/metrics.js";
+import { overrideCommand } from "../src/commands/override.js";
+import { statusCommand } from "../src/commands/status.js";
+import { verifyCommand } from "../src/commands/verify.js";
 import { runInBackground } from "../src/core/background.js";
 import { ClaudeCallError } from "../src/core/claude-call.js";
 import { runClaudeStructured } from "../src/core/claude.js";
@@ -1340,5 +1344,110 @@ describe("background grading", () => {
     await runBackgroundGrading();
     const failure = (await readEvents(root)).find((event) => event.type === "grader_failed_open");
     expect(failure?.failure_reason).toBe("timeout");
+  });
+});
+
+describe("on-demand questions, overrides, and metrics", () => {
+  const captureLog = async (fn) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await fn();
+      return log.mock.calls.map((call) => call.join(" ")).join("\n");
+    } finally {
+      log.mockRestore();
+    }
+  };
+
+  it("opens a verify question in the session so the next message is read as the answer", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+
+    const printed = await captureLog(() => verifyCommand({ session: "session-1" }));
+    expect(printed).toMatch(/Learning Moment lm_[0-9a-f]{4}: What does the change do\?/);
+    expect(printed).not.toContain("It changes the file.");
+    expect(vi.mocked(runClaudeStructured).mock.calls[0][0].system).toContain("/learning-moments:verify");
+
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "moment_injected")).toMatchObject({ delivery: "verify", session_id: "session-1" });
+    expect(events.map((event) => event.type)).toContain("classifier_completed");
+    const output = await reply(root, "It changes what the README says");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("brief feedback");
+    expect(runInBackground).toHaveBeenCalled();
+  });
+
+  it("opens only one question when verify runs twice at once", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    vi.mocked(runClaudeStructured).mockResolvedValue({ output: eligibleClassification, metrics: testMetrics });
+    await captureLog(() => Promise.all([verifyCommand({ session: "session-1" }), verifyCommand({ session: "session-1" })]));
+    vi.mocked(runClaudeStructured).mockReset();
+    const opened = (await readEvents(root)).filter((event) => event.type === "moment_injected");
+    expect(opened).toHaveLength(1);
+  });
+
+  it("keeps a manual override when the background grade lands after it", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    await reply(root, "It edits the README");
+    const { short_id: shortId } = (await readEvents(root)).find((event) => event.type === "moment_injected");
+    await captureLog(() => overrideCommand(shortId, { grade: "3" }));
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 1, label: "likely_incorrect", feedback: "No.", reason: "Off.", confidence: 0.6 },
+      metrics: testMetrics
+    });
+    await runBackgroundGrading();
+    const json = JSON.parse(await captureLog(() => metricsCommand({ json: true, since: "24h" })));
+    expect(json.user.mean_grade).toBe(3);
+  });
+
+  it("shows the open question instead of selecting another", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    const printed = await captureLog(() => verifyCommand({ session: "session-1" }));
+    expect(printed).toContain("is still open");
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves the short ID shown in the conversation and lets the override stand in metrics", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    await reply(root, "It edits the README");
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 1, label: "likely_incorrect", feedback: "No.", reason: "Off.", confidence: 0.6 },
+      metrics: testMetrics
+    });
+    await runBackgroundGrading();
+    const { short_id: shortId } = (await readEvents(root)).find((event) => event.type === "moment_injected");
+
+    await captureLog(() => overrideCommand(shortId, { grade: "3", note: "grader missed it" }));
+    await expect(overrideCommand("lm_ffff", { grade: "2" })).rejects.toThrow(/No Learning Moment lm_ffff/);
+
+    const json = JSON.parse(await captureLog(() => metricsCommand({ json: true, since: "24h" })));
+    expect(json.user).toMatchObject({ moments_injected: 1, answered: 1, grades: 1, grade_distribution: { 3: 1, 1: 0 } });
+    expect(json.cost.per_question_asked_usd).toBeCloseTo(0.02);
+    expect(Object.keys(json.hooks.latency_by_event)).toContain("PostToolBatch");
+    expect(json.hooks.claude_waited.runs).toBe(
+      ["SessionStart", "UserPromptSubmit", "Stop"].reduce((n, name) => n + (json.hooks.latency_by_event[name]?.runs ?? 0), 0)
+    );
+  });
+
+  it("reports the last question and whether it is still open", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    const printed = await captureLog(() => statusCommand());
+    expect(printed).toMatch(/Last question: lm_[0-9a-f]{4}, \dm ago \(still open\)/);
   });
 });

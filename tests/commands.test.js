@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { auditCommand } from "../src/commands/audit.js";
 import { deleteDataCommand } from "../src/commands/delete-data.js";
 import { writableDirectory } from "../src/commands/doctor.js";
 import { initCommand } from "../src/commands/init.js";
@@ -441,4 +442,24 @@ describe("control log pruning at SessionStart", () => {
     expect(ids).not.toContain("lm_event_baseline_ancient");
   });
 
+});
+
+describe("auditCommand", () => {
+  it("fails with --json when a shipped file does not match the manifest", async () => {
+    const { manifestPath } = await import("../src/core/path-self.js");
+    const original = await fs.readFile(manifestPath(), "utf8");
+    const manifest = JSON.parse(original);
+    manifest.files["README.md"] = "0".repeat(64);
+    await fs.writeFile(manifestPath(), JSON.stringify(manifest));
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const previous = process.exitCode;
+    try {
+      await auditCommand({ json: true });
+      expect(process.exitCode).toBe(1);
+    } finally {
+      write.mockRestore();
+      process.exitCode = previous;
+      await fs.writeFile(manifestPath(), original);
+    }
+  });
 });

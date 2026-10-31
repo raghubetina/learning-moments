@@ -202,12 +202,12 @@ Only one question is open per session, and a question nobody answers within two 
 | --- | --- |
 | `learning-moments init` | Create local data, hooks, and command prompts |
 | `learning-moments doctor` | Check the installation and required tools |
-| `learning-moments status` | Show mode, pause state, frequency, and answer counts |
+| `learning-moments status` | Show mode, pause state, frequency, counts, and the last question |
 | `learning-moments metrics [--since 7d]` | Report latency, outcomes, usage, and estimated cost |
-| `learning-moments verify` | Print a question about meaningful current uncommitted changes |
+| `learning-moments verify [--session <id>]` | Ask a question about current uncommitted changes; `/learning-moments:verify` opens it in the session so your reply is read and graded |
 | `learning-moments pause --project` | Stop asking questions in this project |
 | `learning-moments resume --project` | Resume questions in this project |
-| `learning-moments override <id> --grade 0-3` | Record a manual grade correction |
+| `learning-moments override <id> --grade 0-3` | Replace a question's grade, by its `lm_xxxx` ID |
 | `learning-moments audit` | Verify installed package files against the shipped manifest |
 | `learning-moments uninstall` | Remove hooks and slash commands but keep learning data |
 | `learning-moments delete-data --logs-only` | Truncate disposable telemetry only |
@@ -330,11 +330,11 @@ learning-moments metrics --since 24h --json
 
 Metrics include:
 
-- total hook runs, median latency, and p95 latency;
-- classifier attempts, declines, duplicates, and fail-open outcomes;
-- answer-feedback attempts and failures;
-- questions, answers, skips, and grades; and
-- Claude-reported token use and estimated cost.
+- questions asked, answered, "don't know", skipped (by kind), not-an-answer, and expired, with rates;
+- the grade distribution and mean, counting a manual override in place of the model's grade;
+- how long Claude waited on Learning Moments' synchronous hooks, and median and p95 latency per hook;
+- classifier calls, declines, duplicates, and failures by reason; and
+- Claude-reported token use, estimated cost, and cost per question asked.
 
 Selection and grading both run in the background, so they cost tokens but not waiting time.
 

@@ -35,7 +35,7 @@ Commands:
                                       Show speed and cost metrics (window like 30m, 24h, 7d)
   pause   [--project] [--session <id>]
   resume  [--project] [--session <id>]
-  verify                              Check understanding of current uncommitted changes
+  verify [--session <id>]             Ask a question about current uncommitted changes
   override <moment-id> --grade <0-3> [--note <text>]
                                       Record a manual grade override
   uninstall                           Remove hooks and slash commands (keep data)
@@ -121,8 +121,9 @@ const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} *
     await resumeCommand({ project: values.project, session: values.session });
   },
 
-  async verify() {
-    await verifyCommand();
+  async verify(args) {
+    const { values } = parse(args, { session: { type: "string" } });
+    await verifyCommand({ session: typeof values.session === "string" ? values.session : undefined });
   },
 
   async override(args) {

@@ -60,8 +60,9 @@ Do not over-explain unless the user asks.
 
 Prefer moments with low confidence, low grade, high learning value, or explicit recall scheduling.
 `,
-  "verify.md": `Generate a Learning Moment for the selected recent AI-authored change.
+  "verify.md": `The developer asked for this question with /learning-moments:verify, so they are ready for one now.
 
+Prefer asking over staying silent unless the changes are trivial, and keep the question short and specific to the diff.
 Focus on understanding, prediction, testing, or recall rather than generic code review.
 `
 };
@@ -92,9 +93,10 @@ description: Resume Learning Moments in this project
 Run \`learning-moments resume --project\`, then confirm it is active again.
 `,
   "verify.md": `---
-description: Quiz me on the most recent meaningful AI-authored change in this project
+description: Ask me a question about the current uncommitted changes
+allowed-tools: Bash(learning-moments verify *)
 ---
 
-Ask Learning Moments to verify my understanding of the most recent meaningful AI-authored project change. If the CLI command exists, run \`learning-moments verify\`.
+Run \`learning-moments verify --session \${CLAUDE_SESSION_ID}\` and show me its output exactly as printed. If it prints a question, stop there: do not answer it, hint at the answer, or explain the change. My next message is my answer.
 `
 };
