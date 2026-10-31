@@ -10,6 +10,34 @@ export function latestSessionBaseline(events, sessionId) {
   return baseline.snapshot;
 }
 
+// A question selected in the background waits for the end of a turn. If
+// no turn ends within this window, the change it was about has moved on.
+export const READY_MOMENT_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * The newest question selected for this session that has not yet been
+ * asked, expired, or set aside.
+ */
+export function pendingReadyMoment(events, sessionId) {
+  const settled = new Set();
+  for (const event of events) {
+    if (
+      typeof event.moment_id === "string" &&
+      ["moment_injected", "moment_expired", "moment_silenced"].includes(event.type)
+    ) {
+      settled.add(event.moment_id);
+    }
+  }
+  const ready = [...events].reverse().find(
+    (event) =>
+      event.type === "moment_ready" &&
+      event.session_id === sessionId &&
+      typeof event.moment_id === "string" &&
+      !settled.has(event.moment_id)
+  );
+  return ready ?? null;
+}
+
 // A question nobody answered within this window no longer captures the
 // next message: hours later, that message is about something else.
 export const PENDING_ANSWER_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -41,7 +69,8 @@ export function pendingInjectedMoment(events, sessionId, now = new Date()) {
     question: typeof injected.question === "string" ? injected.question : "",
     expected_answer_outline:
       typeof injected.expected_answer_outline === "string" ? injected.expected_answer_outline : undefined,
-    files: Array.isArray(injected.files) ? injected.files.map(String) : []
+    files: Array.isArray(injected.files) ? injected.files.map(String) : [],
+    delivery: typeof injected.delivery === "string" ? injected.delivery : undefined
   };
 }
 

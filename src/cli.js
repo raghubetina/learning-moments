@@ -180,7 +180,8 @@ const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} *
           await userPromptExpansionHook(await readHookJson());
         },
         stop: async () => {
-          await stopHook(await readHookJson());
+          const output = await stopHook(await readHookJson());
+          if (output) printJson(output);
         },
         "session-start": async () => {
           await sessionStartHook(await readHookJson());

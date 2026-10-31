@@ -7,7 +7,7 @@ import { changedSinceBaseline, contextForFiles, workspaceContext } from "../../c
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
-import { latestSessionBaseline, pendingInjectedMoment } from "../../core/state.js";
+import { latestSessionBaseline, pendingInjectedMoment, pendingReadyMoment } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
 import { resolveProject } from "../../core/project.js";
 
@@ -48,6 +48,12 @@ export async function postToolBatchHook(input) {
   }
 
   const controlEvents = await readControl(projectRoot);
+  // A question already waiting for the end of the turn makes another
+  // classification wasted work.
+  if (pendingReadyMoment(await readLedger(projectRoot), parsed.session_id)) {
+    await complete("moment_already_ready");
+    return null;
+  }
   if (!classifierBudgetAvailable(controlEvents, config)) {
     await complete("classifier_budget_exhausted");
     return null;
@@ -139,6 +145,12 @@ export async function postToolBatchHook(input) {
       return { status: "already_seen" };
     }
 
+    // Rechecked under the lock: async batches can overlap, and each can
+    // pass the early check before any of them records its call.
+    if (!classifierBudgetAvailable(lockedControl, config)) {
+      return { status: "budget" };
+    }
+
     await appendEvent(projectRoot, {
       type: "classifier_called",
       session_id: parsed.session_id,
@@ -150,6 +162,10 @@ export async function postToolBatchHook(input) {
     return { status: "claimed" };
   });
 
+  if (claim.status === "budget") {
+    await complete("classifier_budget_exhausted");
+    return null;
+  }
   if (claim.status === "already_seen") {
     await complete("candidate_already_seen", { candidate_fingerprint: fingerprint });
     return null;
@@ -224,7 +240,10 @@ export async function postToolBatchHook(input) {
     redaction_findings: diff.findings
   };
 
-  const injection = await withProjectLock(projectRoot, "moment-claim", async () => {
+  // Phase 2 — re-acquire the lock to decide atomically whether this
+  // question waits for the end of the turn. Between phase 1 and here
+  // another hook may have queued or asked a question of its own.
+  const queued = await withProjectLock(projectRoot, "moment-claim", async () => {
     await appendEvent(projectRoot, {
       type: "moment_created",
       ...baseEvent,
@@ -236,15 +255,17 @@ export async function postToolBatchHook(input) {
     const lockedLedger = await readLedger(projectRoot);
     // One open question per session: a second would make it ambiguous
     // which one the next message answers.
-    const questionPending = pendingInjectedMoment(lockedLedger, parsed.session_id) !== null;
-    const canInject =
+    const questionPending =
+      pendingInjectedMoment(lockedLedger, parsed.session_id) !== null ||
+      pendingReadyMoment(lockedLedger, parsed.session_id) !== null;
+    const canQueue =
       config.mode === "active" &&
       classification.delivery === "active" &&
       classification.timing === "ask_now" &&
       !questionPending &&
       immediatePromptBudgetAvailable(lockedLedger, config);
 
-    if (!canInject) {
+    if (!canQueue) {
       let reason;
       if (config.mode === "observe_only") reason = "observe_only";
       else if (classification.timing !== "ask_now") reason = "ask_later";
@@ -255,35 +276,17 @@ export async function postToolBatchHook(input) {
         ...baseEvent,
         reason
       });
-      return { status: "silenced" };
+      return false;
     }
 
     await appendEvent(projectRoot, {
-      type: "moment_injected",
-      ...baseEvent
+      type: "moment_ready",
+      ...baseEvent,
+      moment_type: classification.moment_type
     });
-    return { status: "injected" };
+    return true;
   });
 
-  if (injection.status === "silenced") {
-    await complete("moment_silenced", { candidate_fingerprint: fingerprint });
-    return null;
-  }
-
-  await complete("moment_injected", { candidate_fingerprint: fingerprint });
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PostToolBatch",
-      additionalContext: [
-        "Learning Moments found a question for the user.",
-        "",
-        "Ask the user this question before explaining the change further:",
-        "",
-        `Learning Moment \`${displayId}\``,
-        classification.question,
-        "",
-        "Wait for the user's answer before giving any explanation. Include the Learning Moment ID in the question."
-      ].join("\n")
-    }
-  };
+  await complete(queued ? "moment_ready" : "moment_silenced", { candidate_fingerprint: fingerprint });
+  return null;
 }

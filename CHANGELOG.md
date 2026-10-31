@@ -4,8 +4,23 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+Run `learning-moments init` again after upgrading to install the new hook settings.
+
+### Changed
+
+- Questions are now selected in the background and asked when Claude finishes its turn. `PostToolBatch`, `PostToolUse`, and `UserPromptExpansion` are installed as `async` hooks, so the classifier no longer blocks Claude, and `Stop` asks the selected question as Stop-hook context, which the transcript also shows as hook feedback. Previously the question was injected mid-task with instructions to wait for an answer, which stopped Claude's work until the developer replied; in the author's ledgers that produced replies such as "Proceed". A selected question not asked within 30 minutes expires. (#14)
+- Context given to Claude now states facts about the session instead of issuing commands, following Claude Code's guidance that command-like hook text can trigger prompt-injection defenses.
+- New configs ignore `dist/`, `coverage/`, and `node_modules/` at any depth; the secret-path entries moved into the built-in list.
+- Nested calls no longer load CLAUDE.md files or auto memory, and they send the selector or grader policy as the system prompt instead of the default Claude Code prompt. Together with the MCP fix, fixed per-call overhead fell from about 20,000 input tokens to about 1,000 in local measurement.
+- Nested calls now set an explicit effort level (`claude.classifier_effort` and `claude.grading_effort`, default `low`) instead of inheriting the developer's `effortLevel`. In local testing on three real diffs, `low` classified in 13–15 seconds against 23–28 seconds at `xhigh`, with comparable questions.
+- `classifier_failed_open` and `grader_failed_open` events now record a failure category (`timeout`, `rate_limited`, `auth`, `invalid_output`, and others) and the call's metrics, including usage from a result envelope printed before a nonzero exit. `metrics` counts that cost and time and groups failures by reason.
+- Raised the minimum Node.js version from 20 to 22. Node 20 reached end of life on 2026-04-30, and current Vitest requires Node 22.12 or newer. The runtime code is unchanged.
+- CI now runs on Node 22, 24, and 26. The publish workflow now fails on high-severity npm advisories in the development toolchain.
+- Updated TypeScript to 7, Vitest to 5, and Node type definitions to the Node 22 line. Dependabot no longer proposes major `@types/node` updates ahead of the runtime floor.
+
 ### Fixed
 
+- Every `Stop` while a question stayed open recorded another `question_observed` event. Each question is now observed once.
 - Nested `claude -p` calls could load and call the developer's MCP tools. `--tools ""` only removes built-in tools, so a permitted MCP tool's result could enter the selector or grader request without redaction. Nested calls now pass `--strict-mcp-config` and `--disallowedTools "mcp__*"`.
 - Default secret-path exclusions matched only at the repository root, so files such as `apps/api/.env`, `apps/api/.npmrc`, or `deploy/.ssh/id_rsa` could reach the selector. Credential files, lockfiles, and `.learning-moments/` are now excluded at any depth by a built-in list that applies regardless of `config.json`, so upgraded installations are covered without editing their config.
 - `package-lock.json`, `pnpm-lock.yaml`, and other lockfiles without a `.lock` extension were not excluded, although the README said lockfiles were. Their churn could crowd code out of the context budget.
@@ -23,16 +38,6 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 - A second question could be asked while the first was unanswered, leaving it ambiguous which one the next message answered. Only one question is open per session, and an open question expires after two hours.
 - Commands run outside an initialized project now say so instead of failing on a missing `config.json`.
 - Redaction now also covers npm tokens and `.npmrc` auth entries, project-scoped OpenAI keys, Slack and GitLab tokens, Google API keys, and passwords in connection-string URLs.
-
-### Changed
-
-- New configs ignore `dist/`, `coverage/`, and `node_modules/` at any depth; the secret-path entries moved into the built-in list.
-- Nested calls no longer load CLAUDE.md files or auto memory, and they send the selector or grader policy as the system prompt instead of the default Claude Code prompt. Together with the MCP fix, fixed per-call overhead fell from about 20,000 input tokens to about 1,000 in local measurement.
-- Nested calls now set an explicit effort level (`claude.classifier_effort` and `claude.grading_effort`, default `low`) instead of inheriting the developer's `effortLevel`. In local testing on three real diffs, `low` classified in 13–15 seconds against 23–28 seconds at `xhigh`, with comparable questions.
-- `classifier_failed_open` and `grader_failed_open` events now record a failure category (`timeout`, `rate_limited`, `auth`, `invalid_output`, and others) and the call's metrics, including usage from a result envelope printed before a nonzero exit. `metrics` counts that cost and time and groups failures by reason.
-- Raised the minimum Node.js version from 20 to 22. Node 20 reached end of life on 2026-04-30, and current Vitest requires Node 22.12 or newer. The runtime code is unchanged.
-- CI now runs on Node 22, 24, and 26. The publish workflow now fails on high-severity npm advisories in the development toolchain.
-- Updated TypeScript to 7, Vitest to 5, and Node type definitions to the Node 22 line. Dependabot no longer proposes major `@types/node` updates ahead of the runtime floor.
 
 ## [0.5.5] - 2026-07-10
 

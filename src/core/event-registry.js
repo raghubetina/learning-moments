@@ -23,6 +23,8 @@
 export const EVENT_CLASSES = Object.freeze({
   // Class A — durable learning record
   moment_created: "ledger",
+  moment_ready: "ledger",
+  moment_expired: "ledger",
   moment_injected: "ledger",
   feedback_injected: "ledger",
   answer_received: "ledger",
