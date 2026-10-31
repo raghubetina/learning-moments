@@ -236,6 +236,43 @@ describe("metricsCommand", () => {
       log.mockRestore();
     }
   });
+
+  it("counts the cost of failed calls and groups failures by reason", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, {
+      type: "classifier_failed_open",
+      cwd: root,
+      failure_reason: "invalid_output",
+      metrics: { wall_duration_ms: 9000, total_cost_usd: 0.02, output_tokens: 40 }
+    });
+    await appendEvent(root, {
+      type: "classifier_failed_open",
+      cwd: root,
+      failure_reason: "timeout",
+      metrics: { wall_duration_ms: 45000 }
+    });
+    await appendEvent(root, {
+      type: "grader_failed_open",
+      cwd: root,
+      failure_reason: "rate_limited",
+      metrics: { wall_duration_ms: 2000, total_cost_usd: 0.03 }
+    });
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await metricsCommand({ json: true, since: "24h" });
+      const summary = JSON.parse(String(log.mock.calls[0]?.[0]));
+      expect(summary.classifier.failed_open).toBe(2);
+      expect(summary.classifier.failure_reasons).toEqual({ invalid_output: 1, timeout: 1 });
+      expect(summary.classifier.total_cost_usd).toBe(0.02);
+      expect(summary.classifier.avg_wall_duration_ms).toBe(27000);
+      expect(summary.grader.total_cost_usd).toBe(0.03);
+    } finally {
+      log.mockRestore();
+    }
+  });
 });
 
 describe("deleteDataCommand --logs-only", () => {

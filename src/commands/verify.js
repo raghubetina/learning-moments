@@ -17,7 +17,11 @@ export async function verifyCommand() {
 
   const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
-  const classification = result?.classification;
+  if (result && !result.ok) {
+    console.log(`Could not select a question (${result.reason}).`);
+    return;
+  }
+  const classification = result?.value;
   if (!classification || !classification.eligible || classification.delivery === "discard") {
     console.log("No high-value Learning Moment found in the current uncommitted changes.");
     return;

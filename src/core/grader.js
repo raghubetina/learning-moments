@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { attemptClaudeCall } from "./claude-call.js";
 import { runClaudeStructured } from "./claude.js";
 import { defaultPrompts } from "./defaults.js";
 import { promptsDir } from "./paths.js";
@@ -53,10 +54,8 @@ async function readTextOrDefault(filePath, fallback) {
   }
 }
 
-function buildGradePrompt(instruction, input) {
+function buildGradePrompt(input) {
   return [
-    instruction.trim(),
-    "",
     "Question:",
     input.question,
     "",
@@ -71,26 +70,27 @@ function buildGradePrompt(instruction, input) {
   ].join("\n");
 }
 
+/**
+ * @returns {Promise<import("./claude-call.js").ClaudeAttempt<ReturnType<typeof parseGradeOutput>>>}
+ */
 export async function gradeAnswer(projectRoot, config, input) {
   const instruction = await readTextOrDefault(
     path.join(promptsDir(projectRoot), "grade-answer.md"),
     defaultPrompts["grade-answer.md"] ?? ""
   );
 
-  try {
-    const result = await runClaudeStructured({
-      projectRoot,
-      config,
-      prompt: buildGradePrompt(instruction, input),
-      schema: gradeJsonSchema,
-      model: config.claude.grading_model,
-      timeoutSeconds: config.claude.grader_timeout_seconds
-    });
-    return {
-      grade: parseGradeOutput(result.output),
-      metrics: result.metrics
-    };
-  } catch {
-    return null;
-  }
+  return attemptClaudeCall(
+    () =>
+      runClaudeStructured({
+        projectRoot,
+        config,
+        system: instruction.trim(),
+        prompt: buildGradePrompt(input),
+        schema: gradeJsonSchema,
+        model: config.claude.grading_model,
+        effort: config.claude.grading_effort,
+        timeoutSeconds: config.claude.grader_timeout_seconds
+      }),
+    parseGradeOutput
+  );
 }

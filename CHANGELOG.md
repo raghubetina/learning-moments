@@ -4,7 +4,15 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 
 ## [Unreleased]
 
+### Fixed
+
+- Nested `claude -p` calls could load and call the developer's MCP tools. `--tools ""` only removes built-in tools, so a permitted MCP tool's result could enter the selector or grader request without redaction. Nested calls now pass `--strict-mcp-config` and `--disallowedTools "mcp__*"`.
+
 ### Changed
+
+- Nested calls no longer load CLAUDE.md files or auto memory, and they send the selector or grader policy as the system prompt instead of the default Claude Code prompt. Together with the MCP fix, fixed per-call overhead fell from about 20,000 input tokens to about 1,000 in local measurement.
+- Nested calls now set an explicit effort level (`claude.classifier_effort` and `claude.grading_effort`, default `low`) instead of inheriting the developer's `effortLevel`. In local testing on three real diffs, `low` classified in 13–15 seconds against 23–28 seconds at `xhigh`, with comparable questions.
+- `classifier_failed_open` and `grader_failed_open` events now record a failure category (`timeout`, `rate_limited`, `auth`, `invalid_output`, and others) and the call's metrics, including usage from a result envelope printed before a nonzero exit. `metrics` counts that cost and time and groups failures by reason.
 
 - Raised the minimum Node.js version from 20 to 22. Node 20 reached end of life on 2026-04-30, and current Vitest requires Node 22.12 or newer. The runtime code is unchanged.
 - CI now runs on Node 22, 24, and 26. The publish workflow now fails on high-severity npm advisories in the development toolchain.

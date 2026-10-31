@@ -85,20 +85,26 @@ export async function userPromptSubmitHook(input) {
     files: pending.files
   });
 
-  if (!gradeResult) {
+  if (!gradeResult.ok) {
     await appendEvent(projectRoot, {
       type: "grader_failed_open",
       moment_id: pending.id,
       short_id: pending.short_id,
       session_id: parsed.session_id,
       transcript_path: parsed.transcript_path,
-      cwd: parsed.cwd
+      cwd: parsed.cwd,
+      failure_reason: gradeResult.reason,
+      metrics: gradeResult.metrics
     });
-    await complete("grader_failed_open", { moment_id: pending.id, short_id: pending.short_id });
+    await complete("grader_failed_open", {
+      moment_id: pending.id,
+      short_id: pending.short_id,
+      failure_reason: gradeResult.reason
+    });
     return null;
   }
 
-  const grade = gradeResult.grade;
+  const grade = gradeResult.value;
   await appendEvent(projectRoot, {
     type: "grader_completed",
     moment_id: pending.id,

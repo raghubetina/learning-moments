@@ -145,7 +145,8 @@ export async function postToolBatchHook(input) {
   // Slow path — runs OUTSIDE the moment-claim lock so parallel hooks with
   // distinct fingerprints don't serialize on each other's model calls.
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
-  if (!result) {
+  if (!result || !result.ok) {
+    const failureReason = result ? result.reason : "empty_context";
     await appendEvent(projectRoot, {
       type: "classifier_failed_open",
       session_id: parsed.session_id,
@@ -153,9 +154,14 @@ export async function postToolBatchHook(input) {
       cwd: parsed.cwd,
       files,
       candidate_fingerprint: fingerprint,
+      failure_reason: failureReason,
+      metrics: result?.metrics,
       redaction_findings: diff.findings
     });
-    await complete("classifier_failed_open", { candidate_fingerprint: fingerprint });
+    await complete("classifier_failed_open", {
+      candidate_fingerprint: fingerprint,
+      failure_reason: failureReason
+    });
     return null;
   }
 
@@ -169,7 +175,7 @@ export async function postToolBatchHook(input) {
     metrics: result.metrics
   });
 
-  const classification = result.classification;
+  const classification = result.value;
   if (!classification.eligible || classification.delivery === "discard") {
     await appendEvent(projectRoot, {
       type: "classifier_declined",

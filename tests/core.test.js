@@ -5,11 +5,18 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, parseConfig, writeConfig } from "../src/core/config.js";
 import { changedSinceBaseline, contextForFiles, dirtyFiles, gitHashObjects, workspaceContext } from "../src/core/git.js";
 import { createId, shortId } from "../src/core/ids.js";
-import { settingsArgument } from "../src/core/claude.js";
+import { attemptClaudeCall, ClaudeCallError } from "../src/core/claude-call.js";
+import {
+  execFailureReason,
+  nestedClaudeArgs,
+  nestedClaudeEnv,
+  runClaudeStructured,
+  settingsArgument
+} from "../src/core/claude.js";
 import { LockTimeoutError, withProjectLock } from "../src/core/lock.js";
 import {
   appendEvent,
@@ -97,6 +104,18 @@ describe("config", () => {
     await writeConfig(root, defaultConfig);
     await expect(fs.stat(configPath(root))).resolves.toBeTruthy();
     await expect(loadConfig(root)).resolves.toEqual(defaultConfig);
+  });
+
+  it("defaults model-call effort when an older config omits it", () => {
+    const { classifier_effort, grading_effort, ...olderClaude } = defaultConfig.claude;
+    const parsed = parseConfig({ ...defaultConfig, claude: olderClaude });
+    expect(parsed.claude.classifier_effort).toBe(defaultConfig.claude.classifier_effort);
+    expect(parsed.claude.grading_effort).toBe(defaultConfig.claude.grading_effort);
+  });
+
+  it("rejects an unknown effort level", () => {
+    const bad = { ...defaultConfig, claude: { ...defaultConfig.claude, classifier_effort: "turbo" } };
+    expect(() => parseConfig(bad)).toThrow(/classifier_effort/);
   });
 
   it("rejects negative frequency limits", () => {
@@ -400,6 +419,149 @@ describe("redaction", () => {
     expect(result.text).toContain("[REDACTED_ANTHROPIC_KEY");
     expect(result.text).toContain("hash=");
     expect(result.findings[0]?.type).toBe("ANTHROPIC_KEY");
+  });
+});
+
+describe("nested claude -p isolation", () => {
+  const request = (overrides = {}) => ({
+    projectRoot: "/nonexistent-project",
+    config: defaultConfig,
+    prompt: "user content",
+    system: "selector policy",
+    schema: { type: "object" },
+    model: "opus",
+    effort: "low",
+    ...overrides
+  });
+
+  it("disables MCP servers and tools, not just built-in tools", async () => {
+    const args = await nestedClaudeArgs(request());
+    expect(args).toContain("--strict-mcp-config");
+    const deny = args.indexOf("--disallowedTools");
+    expect(args[deny + 1]).toBe("mcp__*");
+    const tools = args.indexOf("--tools");
+    expect(args[tools + 1]).toBe("");
+  });
+
+  it("passes the policy as the system prompt and the content as the prompt", async () => {
+    const args = await nestedClaudeArgs(request());
+    expect(args[args.indexOf("--system-prompt") + 1]).toBe("selector policy");
+    expect(args[args.indexOf("-p") + 1]).toBe("user content");
+  });
+
+  it("sets an explicit effort unless configured to inherit the user's", async () => {
+    const explicit = await nestedClaudeArgs(request({ effort: "medium" }));
+    expect(explicit[explicit.indexOf("--effort") + 1]).toBe("medium");
+    const inherited = await nestedClaudeArgs(request({ effort: "default" }));
+    expect(inherited).not.toContain("--effort");
+  });
+
+  it("keeps CLAUDE.md files and auto memory out of nested calls", () => {
+    const env = nestedClaudeEnv({ PATH: "/bin" });
+    expect(env).toMatchObject({
+      PATH: "/bin",
+      LEARNING_MOMENTS_INTERNAL: "1",
+      CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"
+    });
+  });
+
+  it("maps execFile failures to bounded reasons", () => {
+    expect(execFailureReason({ code: "ENOENT" })).toBe("claude_not_found");
+    expect(execFailureReason({ killed: true, signal: "SIGTERM" })).toBe("timeout");
+    expect(execFailureReason({ code: 1, stdout: "Claude AI usage limit reached" })).toBe("rate_limited");
+    expect(execFailureReason({ code: 1, stderr: "Not logged in. Please run /login" })).toBe("auth");
+    expect(execFailureReason({ code: 2, stderr: "something else" })).toBe("exit_nonzero");
+  });
+
+  it("returns a failure category instead of throwing for call failures", async () => {
+    const failed = await attemptClaudeCall(
+      async () => {
+        throw new ClaudeCallError("timeout", "slow", { wall_duration_ms: 45000 });
+      },
+      (output) => output
+    );
+    expect(failed).toEqual({ ok: false, reason: "timeout", metrics: { wall_duration_ms: 45000 } });
+
+    const invalid = await attemptClaudeCall(
+      async () => ({ output: { nope: true }, metrics: { total_cost_usd: 0.02 } }),
+      () => {
+        throw new Error("schema mismatch");
+      }
+    );
+    expect(invalid).toEqual({ ok: false, reason: "invalid_output", metrics: { total_cost_usd: 0.02 } });
+  });
+
+  describe("against a stand-in claude executable", () => {
+    let previousPath;
+    let envelope;
+
+    beforeEach(async () => {
+      const bin = await tempDir();
+      envelope = path.join(bin, "envelope.json");
+      // Prints the envelope file and exits with the code in its name.
+      await fs.writeFile(
+        path.join(bin, "claude"),
+        `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst [file, code] = fs.readFileSync(${JSON.stringify(envelope + ".target")}, "utf8").split("\\n");\nprocess.stdout.write(fs.readFileSync(file, "utf8"));\nprocess.exit(Number(code));\n`,
+        { mode: 0o755 }
+      );
+      previousPath = process.env.PATH;
+      process.env.PATH = `${bin}${path.delimiter}${previousPath}`;
+    });
+
+    afterEach(() => {
+      process.env.PATH = previousPath;
+    });
+
+    async function respond(body, exitCode) {
+      await fs.writeFile(envelope, JSON.stringify(body));
+      await fs.writeFile(`${envelope}.target`, `${envelope}\n${exitCode}`);
+    }
+
+    const call = () =>
+      runClaudeStructured({
+        projectRoot: os.tmpdir(),
+        config: defaultConfig,
+        prompt: "content",
+        system: "policy",
+        schema: { type: "object" },
+        model: "opus",
+        effort: "low",
+        timeoutSeconds: 20
+      });
+
+    it("keeps billed usage when the CLI exits nonzero after printing a result", async () => {
+      await respond({ type: "result", is_error: true, result: "API Error: 500", total_cost_usd: 0.00014, usage: { output_tokens: 7 } }, 1);
+      const error = await call().catch((caught) => caught);
+      expect(error).toBeInstanceOf(ClaudeCallError);
+      expect(error.reason).toBe("exit_nonzero");
+      expect(error.metrics.total_cost_usd).toBe(0.00014);
+      expect(error.metrics.output_tokens).toBe(7);
+    });
+
+    it("reports plain-text results without structured output as invalid output", async () => {
+      await respond({ type: "result", result: "I cannot comply.", total_cost_usd: 0.002 }, 0);
+      const error = await call().catch((caught) => caught);
+      expect(error).toBeInstanceOf(ClaudeCallError);
+      expect(error.reason).toBe("invalid_output");
+      expect(error.metrics.total_cost_usd).toBe(0.002);
+    });
+
+    it("returns structured output and metrics from a successful call", async () => {
+      await respond({ type: "result", structured_output: { ok: true }, total_cost_usd: 0.01 }, 0);
+      await expect(call()).resolves.toMatchObject({ output: { ok: true }, metrics: { total_cost_usd: 0.01 } });
+    });
+  });
+
+  it("lets programming errors propagate so they surface as hook errors", async () => {
+    await expect(
+      attemptClaudeCall(
+        async () => {
+          throw new TypeError("bug");
+        },
+        (output) => output
+      )
+    ).rejects.toThrow("bug");
   });
 });
 
