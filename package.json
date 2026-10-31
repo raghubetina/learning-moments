@@ -14,6 +14,7 @@
     ".claude-plugin/plugin.json",
     "hooks/",
     "skills/",
+    "types/",
     "MANIFEST.json",
     "README.md",
     "CHANGELOG.md",

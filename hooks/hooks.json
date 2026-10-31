@@ -95,5 +95,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./question-band.tsx"
+  ]
 }

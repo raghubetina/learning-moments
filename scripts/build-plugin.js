@@ -32,12 +32,24 @@ export function pluginFiles(pkg) {
         homepage: pkg.homepage,
         repository: "https://github.com/raghubetina/learning-moments",
         license: pkg.license,
-        keywords: pkg.keywords
+        keywords: pkg.keywords,
+        types: "./types/index.d.ts",
+        userConfig: {
+          question_band: {
+            type: "boolean",
+            title: "Question band (experimental)",
+            description:
+              "Show questions in a band above the prompt, with a field to answer and a Skip button, instead of having Claude ask them.",
+            default: false
+          }
+        }
       },
       null,
       2
     )}\n`,
-    "hooks/hooks.json": `${JSON.stringify({ hooks }, null, 2)}\n`
+    // The experimental question band, a mod; it does nothing unless the
+    // question_band option is on.
+    "hooks/hooks.json": `${JSON.stringify({ hooks, modules: ["./question-band.tsx"] }, null, 2)}\n`
   };
   // Quoted: the plugin root can contain spaces (a home directory, or a
   // --plugin-dir checkout).

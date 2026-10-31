@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { auditCommand } from "./commands/audit.js";
+import { answerCommand, bandCommand } from "./commands/band.js";
 import { deleteDataCommand } from "./commands/delete-data.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { gradeCommand } from "./commands/grade.js";
@@ -45,6 +46,9 @@ Commands:
   audit [--json]                      Print install mode, hook paths, and file hashes
   hook <event>                        Internal: Claude Code hook entrypoint
   grade <moment-id> --project <dir>   Internal: background grading of an answer
+  band --session <id>                 Internal: state for the experimental question band
+  answer <moment-id> --session <id> (--text <t> | --skip)
+                                      Internal: an answer given in the question band
 
 Other:
   --version, -v   print version
@@ -142,6 +146,28 @@ const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} *
       throw new Error("override requires --grade <0-3>");
     }
     await overrideCommand(momentId, { grade: values.grade, note: values.note });
+  },
+
+  async band(args) {
+    const { values } = parse(args, { session: { type: "string" } });
+    if (typeof values.session !== "string") throw new Error("band requires --session <id>");
+    await bandCommand({ session: values.session });
+  },
+
+  async answer(args) {
+    const { values, positionals } = parse(args, {
+      session: { type: "string" },
+      text: { type: "string" },
+      skip: { type: "boolean" }
+    });
+    if (!positionals[0] || typeof values.session !== "string") {
+      throw new Error("answer requires a moment id and --session <id>");
+    }
+    await answerCommand(positionals[0], {
+      session: values.session,
+      text: typeof values.text === "string" ? values.text : undefined,
+      skip: values.skip === true
+    });
   },
 
   async grade(args) {

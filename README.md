@@ -114,6 +114,12 @@ When you just need to get work done, pause it from Claude Code:
 
 Resume later with `/learning-moments:resume`. Pausing does not uninstall the hooks or delete your learning record. To ask for a question when it suits you, run `/learning-moments:verify`.
 
+### Experimental question band
+
+The plugin can show questions in a band above the prompt instead of having Claude ask them. The band has a field for your answer and a Skip button. Neither the question nor your answer enters Claude's context, and the background grader's feedback appears in the band a few seconds after you answer. Turn it on with the plugin's **Question band (experimental)** option in `/config`. Press Ctrl+X then Tab to move into the band, type your answer, and press Enter.
+
+The band is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), so it needs a recent Claude Code and draws only in the terminal, the Desktop app, and VS Code; in `claude -p` and cloud sessions, leave it off. It is a prototype: the mods API is early access and may change.
+
 ### Try it without automatic questions
 
 Observe-only mode runs selection and records what would have happened, but does not inject questions:
@@ -402,7 +408,7 @@ Release verification additionally checks npm advisories, the shipped-file manife
 
 ## Roadmap
 
-Next: an optional Claude Code pane that shows the question with an answer field ([experimental](#experimental-question-pane)), and comparison designs (some eligible changes asked, others only recalled later) to study retention.
+Next: evaluating the [experimental question band](#experimental-question-band) in real use, and comparison designs (some eligible changes asked, others only recalled later) to study retention.
 
 Bug reports and small, well-tested improvements are welcome. For research use, the repository includes [citation metadata](CITATION.cff).
 

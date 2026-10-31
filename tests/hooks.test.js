@@ -18,6 +18,7 @@ import { postToolUseHook } from "../src/commands/hooks/post-tool-use.js";
 import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
+import { answerCommand, bandCommand } from "../src/commands/band.js";
 import { gradeCommand } from "../src/commands/grade.js";
 import { metricsCommand } from "../src/commands/metrics.js";
 import { overrideCommand } from "../src/commands/override.js";
@@ -1586,5 +1587,101 @@ describe("delayed recall", () => {
     await batchThenStop(hookInput(root));
     const moment = (await readEvents(root)).find((event) => event.type === "moment_injected");
     expect(moment).toMatchObject({ recall_seed: "Why retry?", summary: "A change." });
+  });
+});
+
+describe("experimental question band", () => {
+  const withBand = async (fn) => {
+    process.env.CLAUDE_PLUGIN_OPTION_QUESTION_BAND = "true";
+    try {
+      return await fn();
+    } finally {
+      delete process.env.CLAUDE_PLUGIN_OPTION_QUESTION_BAND;
+    }
+  };
+  const bandState = async () => {
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await bandCommand({ session: "session-1" });
+      return JSON.parse(String(write.mock.calls[0][0]));
+    } finally {
+      write.mockRestore();
+    }
+  };
+
+  it("hands the question to the band instead of to Claude", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+
+    const output = await withBand(() => stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done." })));
+    expect(output).toBeNull();
+    const state = await bandState();
+    expect(state.question).toMatchObject({ question: "What does the change do?" });
+    // A prompt to Claude is not taken as the answer to a band question.
+    expect(await reply(root, "It changes the README")).toBeNull();
+  });
+
+  it("records an answer given in the band, grades it, and shows the grader's feedback", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+    await withBand(() => stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done." })));
+    const { question } = await bandState();
+
+    await answerCommand(question.moment_id, { session: "session-1", text: "It changes the README text" });
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 3, label: "correct", feedback: "Right: the README text changed.", reason: "Matches.", confidence: 0.9 },
+      metrics: testMetrics
+    });
+    await runBackgroundGrading();
+    const state = await bandState();
+    expect(state.question).toBeNull();
+    expect(state.feedback).toMatchObject({ text: "Right: the README text changed." });
+    const answer = (await readEvents(root)).find((event) => event.type === "answer_received");
+    expect(answer).toMatchObject({ source: "band", answer_text: "It changes the README text" });
+  });
+
+  it("accepts an answer that starts with a dash through the CLI", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, { type: "moment_injected", moment_id: "lm_moment_x_abcd", short_id: "lm_abcd", session_id: "session-1", question: "Q?", delivery: "band" });
+    const cli = path.resolve(import.meta.dirname, "..", "src", "cli.js");
+    execFileSync(process.execPath, [cli, "answer", "lm_moment_x_abcd", "--session", "session-1", "--text=--force skips the check"], {
+      cwd: root,
+      env: { ...process.env, LEARNING_MOMENTS_DISABLE_CLAUDE: "1" }
+    });
+    const answer = (await readEvents(root)).find((event) => event.type === "answer_received");
+    expect(answer?.answer_text).toBe("--force skips the check");
+  });
+
+  it("reports a failed grade so the band stops waiting", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, { type: "moment_injected", moment_id: "lm_moment_x_abcd", short_id: "lm_abcd", session_id: "session-1", question: "Q?", delivery: "band" });
+    await appendEvent(root, { type: "grader_failed_open", moment_id: "lm_moment_x_abcd", short_id: "lm_abcd", session_id: "session-1", failure_reason: "timeout" });
+    const state = await bandState();
+    expect(state.feedback).toMatchObject({ label: "failed" });
+    expect(state.feedback.text).toContain("timeout");
+  });
+
+  it("records a skip from the band", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, { type: "moment_injected", moment_id: "lm_moment_x_abcd", short_id: "lm_abcd", session_id: "session-1", question: "Q?", delivery: "band" });
+    await answerCommand("lm_moment_x_abcd", { session: "session-1", skip: true });
+    expect((await readEvents(root)).find((event) => event.type === "skip_recorded")?.skip_kind).toBe("band");
+    await expect(answerCommand("lm_moment_x_abcd", { session: "session-1", text: "late" })).rejects.toThrow(/not open/);
   });
 });

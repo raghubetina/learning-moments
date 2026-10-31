@@ -21,5 +21,14 @@
     "ai-coding-agents",
     "retrieval-practice",
     "cognitive-friction"
-  ]
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "question_band": {
+      "type": "boolean",
+      "title": "Question band (experimental)",
+      "description": "Show questions in a band above the prompt, with a field to answer and a Skip button, instead of having Claude ask them.",
+      "default": false
+    }
+  }
 }
