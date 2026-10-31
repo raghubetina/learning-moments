@@ -361,24 +361,24 @@ describe("deleteDataCommand --logs-only", () => {
 });
 
 describe("control log pruning at SessionStart", () => {
-  it("drops control entries older than 1h, keeps recent ones", async () => {
+  it("drops hot control entries after 1h and classifier calls after 24h", async () => {
     const { sessionStartHook } = await import("../src/commands/hooks/session-start.js");
     const root = await tempGitRepo();
     process.chdir(root);
     await initCommand({});
 
     const now = Date.now();
-    const stale = JSON.stringify({
-      id: "lm_event_stale",
-      type: "classifier_called",
-      timestamp: new Date(now - 2 * 60 * 60 * 1000).toISOString()
-    });
-    const fresh = JSON.stringify({
-      id: "lm_event_fresh",
-      type: "classifier_called",
-      timestamp: new Date(now - 5 * 60 * 1000).toISOString()
-    });
-    await fs.writeFile(controlPath(root), `${stale}\n${fresh}\n`);
+    const event = (id, type, ageMs) => JSON.stringify({ id, type, timestamp: new Date(now - ageMs).toISOString() });
+    const hour = 60 * 60 * 1000;
+    await fs.writeFile(
+      controlPath(root),
+      [
+        event("lm_event_stale", "candidate_already_seen", 2 * hour),
+        event("lm_event_stale_call", "classifier_called", 25 * hour),
+        event("lm_event_recent_call", "classifier_called", 2 * hour),
+        event("lm_event_fresh", "candidate_already_seen", 5 * 60 * 1000)
+      ].join("\n") + "\n"
+    );
 
     await sessionStartHook({
       session_id: "s1",
@@ -395,7 +395,9 @@ describe("control log pruning at SessionStart", () => {
       .map((l) => JSON.parse(l));
     const ids = remaining.map((e) => e.id);
     expect(ids).toContain("lm_event_fresh");
+    expect(ids).toContain("lm_event_recent_call");
     expect(ids).not.toContain("lm_event_stale");
+    expect(ids).not.toContain("lm_event_stale_call");
   });
 
   it("keeps session_baseline_created rows for 24h, drops them after", async () => {

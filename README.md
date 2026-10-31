@@ -170,6 +170,8 @@ The lifecycle is implemented with six Claude Code hooks:
 
 A question appears in the transcript as Stop hook feedback, and Claude then asks it. Questions arrive at the end of a turn rather than in the middle of a task, so you can read Claude's summary and the question together, and Claude's work is never paused waiting for an answer. A selected question that is not asked within 30 minutes is dropped.
 
+Each look at the working tree considers only what changed since the classifier last looked, newest files first, and diffs files that were already uncommitted when the session began against their state at that point, so your own earlier edits are not presented as Claude's. The classifier is also told which questions were asked recently, so it does not repeat them.
+
 Change attribution is session-relative. Learning Moments can tell that a file changed after the baseline; it cannot prove that every byte came from Claude rather than an external editor used during the same session.
 
 The hooks act only in a project where `learning-moments init` ran, and never create `.learning-moments/` anywhere else, even when Claude runs `cd` into another repository. In a linked worktree of an initialized project, such as a Claude Code worktree session, Learning Moments reads changes from the worktree and keeps its records in the main checkout. Tool calls made inside subagents are not asked about directly; their edits are picked up when the main conversation's tool batch ends.

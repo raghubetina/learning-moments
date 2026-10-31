@@ -62,7 +62,10 @@ async function pruneControlLog(projectRoot) {
         kept.push(line);
         continue;
       }
-      const cutoff = event.type === "session_baseline_created" ? baselineCutoff : hotCutoff;
+      // Reviewed versions in classifier_called must outlive the hour the
+      // budget looks at, or a long session would re-review old changes.
+      const longLived = event.type === "session_baseline_created" || event.type === "classifier_called";
+      const cutoff = longLived ? baselineCutoff : hotCutoff;
       if (ts >= cutoff) {
         kept.push(line);
       }
@@ -122,7 +125,9 @@ export async function sessionStartHook(input) {
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
     source: typeof input.source === "string" ? input.source : undefined,
-    snapshot: ctx.toBaseline()
+    // Stored as blobs, so files already dirty now can later be diffed
+    // against this version instead of HEAD.
+    snapshot: ctx.toBaseline({ write: true })
   });
   // Best-effort pruning of the control log. We deliberately swallow errors:
   // a failure to compact control.jsonl must not interrupt session start.

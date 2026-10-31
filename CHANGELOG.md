@@ -20,6 +20,10 @@ Run `learning-moments init` again after upgrading to install the new hook settin
 
 ### Fixed
 
+- The classifier saw a cumulative diff since session start, sorted by path and truncated, so once more than `max_paths` files had changed (or the first files filled the context budget) later edits never reached it, and the same early hunk kept coming back. In one of the author's sessions the same question was asked twice. Each look now includes only files changed since the last one, newest first, diffed against the version last reviewed, and the classifier is told which questions were asked recently.
+- Files already uncommitted when a session began were diffed against HEAD, so the developer's own earlier edits were presented as part of Claude's change. Session baselines now store those files' contents as Git blobs and later diffs start from them.
+- Concurrent hooks could each pass the classifier budget check before either recorded its call. The budget is now rechecked under the claim lock.
+- A filename containing a newline could misalign `git hash-object --stdin-paths` output. Such paths are now skipped.
 - Every `Stop` while a question stayed open recorded another `question_observed` event. Each question is now observed once.
 - Nested `claude -p` calls could load and call the developer's MCP tools. `--tools ""` only removes built-in tools, so a permitted MCP tool's result could enter the selector or grader request without redaction. Nested calls now pass `--strict-mcp-config` and `--disallowedTools "mcp__*"`.
 - Default secret-path exclusions matched only at the repository root, so files such as `apps/api/.env`, `apps/api/.npmrc`, or `deploy/.ssh/id_rsa` could reach the selector. Credential files, lockfiles, and `.learning-moments/` are now excluded at any depth by a built-in list that applies regardless of `config.json`, so upgraded installations are covered without editing their config.
