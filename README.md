@@ -13,7 +13,7 @@ AI coding agents can inspect a codebase, plan a change, edit files, run tests, a
 
 The approach is borrowed from aviation. As autopilots took over routine flying, the FAA warned airlines that "continuous use of those systems does not reinforce a pilot's knowledge and skills in manual flight operations" and urged them to make sure pilots keep practicing by hand ([SAFO 13002](https://www.faa.gov/sites/faa.gov/files/other_visit/aviation_industry/airline_operators/airline_safety/SAFO13002.pdf), 2013; see also the [Flight Deck Automation Working Group report](https://www.faa.gov/sites/faa.gov/files/aircraft/air_cert/design_approvals/human_factors/OUFPMS_Report.pdf)). Learning Moments applies the same idea to AI-assisted programming: keep the automation, and keep exercising the skills it would otherwise replace.
 
-After a meaningful change, Learning Moments may ask one short question about the files you are working on:
+When Claude finishes a turn that made a meaningful change, Learning Moments may ask one short question about it:
 
 > **Learning Moment `lm_a7f3`**
 > The new retry branch treats timeouts differently from other failures. What behavior would you expect after the final timeout, and what test would distinguish it from the old behavior?
@@ -41,7 +41,7 @@ Implemented today:
 
 - project-local installation through Claude Code Hooks;
 - Git-based detection of changes made during the current Claude Code session;
-- situated **Predict** and **Test** questions selected with `claude -p`;
+- situated **Predict** and **Test** questions, selected in the background with `claude -p` and asked when Claude finishes its turn;
 - answer capture, skipping, structured 0-3 grading, and brief feedback;
 - configurable question and classifier budgets;
 - local timing, usage, cost, and outcome metrics;
@@ -52,7 +52,6 @@ Implemented today:
 Not implemented yet:
 
 - delayed recall across sessions ([issue #15](https://github.com/raghubetina/learning-moments/issues/15));
-- background classification; the classifier currently adds synchronous hook latency ([issue #14](https://github.com/raghubetina/learning-moments/issues/14));
 - confidence prompts or polished research exports; and
 - support for coding agents other than Claude Code.
 
@@ -141,8 +140,8 @@ Claude Code session starts
 Record a Git working-tree baseline
         |
         v
-Claude edits files ---> compare with the baseline
-        |
+Claude edits files ---> compare with the baseline (in the background;
+        |                Claude keeps working)
         v
 Filter ignored paths, bound context, skip symlinks/binaries,
 and redact likely secrets
@@ -154,20 +153,22 @@ specific, worthwhile Learning Moment
         +--- decline / timeout / error ---> stay quiet
         |
         v
-Check the interruption budget and inject one short question
-        |
+Claude finishes its turn ---> check the interruption budget
+        |                     and ask the one selected question
         v
-Capture the next answer or "skip" ---> grade ---> brief feedback
+Read your reply ---> grade, explain, or set aside ---> brief feedback
 ```
 
 The lifecycle is implemented with six Claude Code hooks:
 
 1. `SessionStart` records the current branch, commit, dirty paths, and content fingerprints once per session; resuming, compacting, or clearing keeps that baseline.
-2. `PostToolUse` records lightweight edit telemetry.
-3. `PostToolBatch` finds files that changed since the session baseline and selects a candidate moment.
-4. `UserPromptSubmit` captures and grades the answer to a pending question.
-5. `Stop` checks whether the question or feedback was actually displayed.
-6. `UserPromptExpansion` records slash-command hook activity.
+2. `PostToolUse` records lightweight edit telemetry in the background.
+3. `PostToolBatch` runs in the background after each batch of tool calls. It finds files that changed since the session baseline and, when one is worth it, selects a question. Claude does not wait for it.
+4. `Stop` asks the selected question when Claude finishes its turn, and checks whether earlier questions and feedback were displayed.
+5. `UserPromptSubmit` reads your reply to an open question and grades it.
+6. `UserPromptExpansion` records slash-command activity in the background.
+
+A question appears in the transcript as Stop hook feedback, and Claude then asks it. Questions arrive at the end of a turn rather than in the middle of a task, so you can read Claude's summary and the question together, and Claude's work is never paused waiting for an answer. A selected question that is not asked within 30 minutes is dropped.
 
 Change attribution is session-relative. Learning Moments can tell that a file changed after the baseline; it cannot prove that every byte came from Claude rather than an external editor used during the same session.
 
@@ -332,7 +333,7 @@ Metrics include:
 - questions, answers, skips, and grades; and
 - Claude-reported token use and estimated cost.
 
-The current classifier runs synchronously in `PostToolBatch`, so eligible classification attempts can noticeably pause the workflow. Frequency gating avoids many unnecessary calls, but the architectural fix is the background pipeline tracked in [issue #14](https://github.com/raghubetina/learning-moments/issues/14).
+Selection runs in a background hook, so it costs tokens but not waiting time. Grading still runs before Claude answers your reply.
 
 ## Related projects
 
@@ -389,10 +390,7 @@ Release verification additionally checks npm advisories, the shipped-file manife
 
 ## Roadmap
 
-The next two product steps are:
-
-1. [Move classification off the blocking hook path](https://github.com/raghubetina/learning-moments/issues/14).
-2. [Add delayed recall for prior Learning Moments](https://github.com/raghubetina/learning-moments/issues/15).
+The next product step is [delayed recall for prior Learning Moments](https://github.com/raghubetina/learning-moments/issues/15).
 
 Bug reports and small, well-tested improvements are welcome. For research use, the repository includes [citation metadata](CITATION.cff).
 

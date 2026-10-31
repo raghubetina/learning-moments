@@ -1,5 +1,5 @@
 // @ts-check
-import { assertArray, assertObject, assertString, optional } from "./validate.js";
+import { assertArray, assertBoolean, assertObject, assertString, optional } from "./validate.js";
 
 /**
  * Shared fields every Claude Code hook input carries. Each event type
@@ -16,7 +16,7 @@ import { assertArray, assertObject, assertString, optional } from "./validate.js
  * @typedef {CommonHookInput & {tool_name: string, tool_use_id?: string, tool_input?: unknown}} ToolHookInput
  * @typedef {CommonHookInput & {prompt: string}} UserPromptSubmitInput
  * @typedef {CommonHookInput & {tool_calls: unknown[]}} PostToolBatchInput
- * @typedef {CommonHookInput & {last_assistant_message?: string}} StopHookInput
+ * @typedef {CommonHookInput & {last_assistant_message?: string, stop_hook_active?: boolean}} StopHookInput
  */
 
 /**
@@ -81,5 +81,6 @@ export function parsePostToolBatchInput(raw, loc = "input") {
 export function parseStopHookInput(raw, loc = "input") {
   const obj = parseCommonHookInput(raw, loc);
   optional(obj.last_assistant_message, assertString, `${loc}.last_assistant_message`);
+  optional(obj.stop_hook_active, assertBoolean, `${loc}.stop_hook_active`);
   return /** @type {StopHookInput} */ (obj);
 }

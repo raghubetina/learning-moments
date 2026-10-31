@@ -36,6 +36,13 @@ const testMetrics = {
   requested_model: "opus"
 };
 
+// Questions are chosen after a tool batch and asked when the turn ends.
+async function batchThenStop(input) {
+  const batch = await postToolBatchHook({ ...input, hook_event_name: "PostToolBatch", tool_calls: [] });
+  expect(batch).toBeNull();
+  return stopHook({ ...input, hook_event_name: "Stop", last_assistant_message: "Done." });
+}
+
 async function tempGitRepo() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-hook-test-"));
   execFileSync("git", ["init", "-b", "main"], { cwd: root, stdio: "ignore" });
@@ -113,7 +120,7 @@ describe("hook scoping", () => {
 
     await sessionStartHook(hookInput(worktree, { hook_event_name: "SessionStart", source: "startup" }));
     await fs.writeFile(path.join(worktree, "README.md"), "changed in the worktree\n");
-    const output = await postToolBatchHook(hookInput(worktree, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+    const output = await batchThenStop(hookInput(worktree));
 
     expect(output?.hookSpecificOutput.additionalContext).toContain("What does the change do?");
     expect(vi.mocked(runClaudeStructured).mock.calls[0][0].prompt).toContain("+changed in the worktree");
@@ -264,11 +271,7 @@ describe("hook flow", () => {
     });
 
     await fs.writeFile(path.join(root, "README.md"), "after\n");
-    const askOutput = await postToolBatchHook({
-      ...common,
-      hook_event_name: "PostToolBatch",
-      tool_calls: []
-    });
+    const askOutput = await batchThenStop(common);
 
     expect(askOutput?.hookSpecificOutput.additionalContext).toContain("Learning Moment `lm_");
     expect(askOutput?.hookSpecificOutput.additionalContext).not.toContain("Expected answer outline");
@@ -523,7 +526,7 @@ describe("hook flow", () => {
 
     await sessionStartHook({ ...common, hook_event_name: "SessionStart", source: "startup" });
     await fs.writeFile(path.join(root, "README.md"), "after\n");
-    await postToolBatchHook({ ...common, hook_event_name: "PostToolBatch", tool_calls: [] });
+    await batchThenStop(common);
 
     const config = await loadConfig(root);
     config.paused.sessions["session-1"] = true;
@@ -716,7 +719,7 @@ describe("hook flow", () => {
 
     await sessionStartHook({ ...common, hook_event_name: "SessionStart", source: "startup" });
     await fs.writeFile(path.join(root, "README.md"), "after\n");
-    await postToolBatchHook({ ...common, hook_event_name: "PostToolBatch", tool_calls: [] });
+    await batchThenStop(common);
 
     const FAKE_KEY = "sk-ant-abc1234567890abcdefghi";
     await userPromptSubmitHook({
@@ -790,11 +793,7 @@ describe("hook flow", () => {
       source: "startup"
     });
     await fs.writeFile(path.join(root, "README.md"), "after\n");
-    await postToolBatchHook({
-      ...common,
-      hook_event_name: "PostToolBatch",
-      tool_calls: []
-    });
+    await batchThenStop(common);
     await userPromptSubmitHook({
       ...common,
       hook_event_name: "UserPromptSubmit",
@@ -815,7 +814,7 @@ async function injectMoment(root) {
   vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
   await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
   await fs.writeFile(path.join(root, "README.md"), `after ${Math.random()}\n`);
-  const output = await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+  const output = await batchThenStop(hookInput(root));
   expect(output?.hookSpecificOutput.additionalContext).toContain("What does the change do?");
 }
 
@@ -964,5 +963,136 @@ describe("answer capture", () => {
     expect(await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }))).toBeNull();
     const silenced = (await readEvents(root)).find((event) => event.type === "moment_silenced");
     expect(silenced?.reason).toBe("question_pending");
+  });
+});
+
+describe("end-of-turn questions", () => {
+  async function readyMoment(root) {
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    expect(await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }))).toBeNull();
+  }
+  const stop = (root, extra = {}) =>
+    stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done.", ...extra }));
+
+  it("selects a question during the turn and asks it once the turn ends", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await readyMoment(root);
+    let events = await readEvents(root);
+    expect(events.map((event) => event.type)).toContain("moment_ready");
+    expect(events.map((event) => event.type)).not.toContain("moment_injected");
+
+    const output = await stop(root);
+    const context = output?.hookSpecificOutput.additionalContext;
+    expect(output?.hookSpecificOutput.hookEventName).toBe("Stop");
+    expect(context).toMatch(/Learning Moment `lm_[0-9a-f]{4}`: What does the change do\?/);
+    expect(context).not.toContain("It changes the file.");
+    expect(context).not.toMatch(/^(Ask|Wait|Include)\b/m);
+
+    // The continuation's own Stop neither asks again nor loses the question.
+    expect(await stop(root, { stop_hook_active: true, last_assistant_message: "What does the change do?" })).toBeNull();
+    events = await readEvents(root);
+    expect(events.find((event) => event.type === "moment_injected")?.delivery).toBe("stop");
+    expect(events.find((event) => event.type === "question_observed")).toMatchObject({ relayed: false });
+  });
+
+  it("records the question as seen only once while it stays open", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await readyMoment(root);
+    await stop(root);
+    await stop(root, { stop_hook_active: true });
+    await stop(root);
+    await stop(root);
+    const observed = (await readEvents(root)).filter((event) => event.type === "question_observed");
+    expect(observed).toHaveLength(1);
+  });
+
+  it("does not ask from the Stop that ends a hook-started continuation", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await readyMoment(root);
+    expect(await stop(root, { stop_hook_active: true })).toBeNull();
+    expect(await stop(root)).not.toBeNull();
+  });
+
+  it("expires a question that waited too long for the turn to end", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, {
+      type: "moment_ready",
+      moment_id: "lm_moment_stale_abcd",
+      short_id: "lm_abcd",
+      session_id: "session-1",
+      question: "Stale?",
+      files: [],
+      timestamp: new Date(Date.now() - 31 * 60 * 1000).toISOString()
+    });
+    expect(await stop(root)).toBeNull();
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "moment_expired")?.moment_id).toBe("lm_moment_stale_abcd");
+    expect(events.map((event) => event.type)).not.toContain("moment_injected");
+  });
+
+  it("does not ask while the project is paused", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await readyMoment(root);
+    const config = await loadConfig(root);
+    config.paused.project = true;
+    await writeConfig(root, config);
+    expect(await stop(root)).toBeNull();
+  });
+
+  it("skips classification while a selected question is waiting", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await readyMoment(root);
+    await fs.writeFile(path.join(root, "README.md"), "another change\n");
+    await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets overlapping batches spend the last classifier call only once", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const config = await loadConfig(root);
+    config.frequency.classifier_calls_per_hour = 1;
+    await writeConfig(root, config);
+    const declined = { ...eligibleClassification, eligible: false, delivery: "discard" };
+    vi.mocked(runClaudeStructured).mockResolvedValue({ output: declined, metrics: testMetrics });
+    for (const session of ["session-a", "session-b"]) {
+      await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup", session_id: session }));
+    }
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+
+    await Promise.all(
+      ["session-a", "session-b"].map((session) =>
+        postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [], session_id: session }))
+      )
+    );
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+    vi.mocked(runClaudeStructured).mockReset();
+  });
+
+  it("installs the selection hook to run in the background", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const settings = JSON.parse(await fs.readFile(path.join(root, ".claude", "settings.local.json"), "utf8"));
+    const entry = (event) => settings.hooks[event].flatMap((group) => group.hooks)[0];
+    expect(entry("PostToolBatch").async).toBe(true);
+    expect(entry("PostToolUse").async).toBe(true);
+    expect(entry("Stop").async).toBeUndefined();
+    expect(entry("UserPromptSubmit").async).toBeUndefined();
   });
 });

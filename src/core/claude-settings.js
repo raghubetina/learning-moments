@@ -4,14 +4,17 @@ import { pathExists, readJsonFile, writeJsonFile } from "./file-utils.js";
 import { utcStamp } from "./ids.js";
 import { cliPath } from "./path-self.js";
 
+// `async` hooks run in the background, so Claude never waits on them.
+// Selecting a question takes a model call; it runs after each tool batch
+// in the background, and Stop asks the question when the turn ends.
 const hookSpecs = [
-  { event: "PostToolUse", matcher: "Edit|Write", action: "post-tool-use" },
-  { event: "PostToolBatch", action: "post-tool-batch" },
+  { event: "PostToolUse", matcher: "Edit|Write", action: "post-tool-use", async: true },
+  { event: "PostToolBatch", action: "post-tool-batch", async: true },
   // UserPromptSubmit command hooks default to a 30-second timeout in Claude
   // Code, while the default Learning Moments grader timeout is 45 seconds.
   // Give the grader enough room to hit its own timeout and fail open cleanly.
   { event: "UserPromptSubmit", action: "user-prompt-submit", timeout: 60 },
-  { event: "UserPromptExpansion", action: "user-prompt-expansion" },
+  { event: "UserPromptExpansion", action: "user-prompt-expansion", async: true },
   { event: "Stop", action: "stop" },
   { event: "SessionStart", action: "session-start" }
 ];
@@ -25,7 +28,8 @@ function makeHookEntry(spec) {
     type: "command",
     command: "node",
     args: [cliPath(), "hook", spec.action],
-    ...(spec.timeout ? { timeout: spec.timeout } : {})
+    ...(spec.timeout ? { timeout: spec.timeout } : {}),
+    ...(spec.async ? { async: true } : {})
   };
 }
 
