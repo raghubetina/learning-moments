@@ -41,6 +41,12 @@ export async function userPromptSubmitHook(input) {
     await complete("no_pending_moment");
     return null;
   }
+  // A question shown in the question band is answered there; prompts to
+  // Claude are left alone.
+  if (pending.delivery === "band") {
+    await complete("band_question_open", { moment_id: pending.id, short_id: pending.short_id });
+    return null;
+  }
 
   // Pattern-redact the user's message once. The redacted text is what
   // gets persisted and what travels to the grader; the raw prompt never

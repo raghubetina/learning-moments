@@ -91,7 +91,7 @@ export async function stopHook(input) {
     const relayed = parsed.last_assistant_message?.includes(pending.short_id) ?? false;
     // A question asked at Stop was already shown as hook feedback, so the
     // developer saw it even when Claude did not repeat it.
-    const shown = relayed || pending.delivery === "stop";
+    const shown = relayed || pending.delivery === "stop" || pending.delivery === "band";
     await appendEvent(projectRoot, {
       type: shown ? "question_observed" : "moment_injection_missed",
       moment_id: pending.id,
@@ -130,6 +130,10 @@ export async function stopHook(input) {
     return null;
   }
 
+  // With the plugin's experimental question band on, the band shows the
+  // question and takes the answer, so it never enters Claude's context.
+  const band = process.env.CLAUDE_PLUGIN_OPTION_QUESTION_BAND === "true";
+  const delivery = band ? "band" : "stop";
   const delivered = await withProjectLock(projectRoot, "moment-claim", async () => {
     const lockedLedger = await readLedger(projectRoot);
     if (pendingInjectedMoment(lockedLedger, parsed.session_id) || !immediatePromptBudgetAvailable(lockedLedger, config)) {
@@ -148,7 +152,7 @@ export async function stopHook(input) {
         return { status: "expired" };
       }
       const { id, type, timestamp, ...fields } = current;
-      await appendEvent(projectRoot, { ...fields, type: "moment_injected", ...session, delivery: "stop" });
+      await appendEvent(projectRoot, { ...fields, type: "moment_injected", ...session, delivery });
       return { status: "injected", moment: { short_id: String(current.short_id), question: String(current.question) } };
     }
 
@@ -169,13 +173,18 @@ export async function stopHook(input) {
       question,
       expected_answer_outline: due.original.expected_answer_outline,
       context_excerpt: due.original.context_excerpt,
-      delivery: "stop"
+      delivery
     };
     await appendEvent(projectRoot, recall);
     return { status: "injected", moment: { short_id: recall.short_id, question } };
   });
 
   const outcomeIds = delivered.moment ? { short_id: delivered.moment.short_id } : {};
+  if (delivered.status === "injected" && band) {
+    // The experimental question band shows it; Claude never sees it.
+    await complete("moment_injected_band", outcomeIds);
+    return null;
+  }
   await complete(delivered.status === "injected" ? "moment_injected" : `moment_${delivered.status}`, outcomeIds);
   if (delivered.status !== "injected" || !delivered.moment) return null;
   return {
