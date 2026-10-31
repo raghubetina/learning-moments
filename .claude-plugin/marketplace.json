@@ -1,0 +1,17 @@
+{
+  "name": "learning-moments",
+  "description": "Brief, situated comprehension checks for AI-assisted changes in Claude Code",
+  "owner": {
+    "name": "Raghu Betina"
+  },
+  "plugins": [
+    {
+      "name": "learning-moments",
+      "description": "Asks one short question about a meaningful change when Claude finishes a turn, then gives brief feedback",
+      "source": {
+        "source": "npm",
+        "package": "learning-moments"
+      }
+    }
+  ]
+}

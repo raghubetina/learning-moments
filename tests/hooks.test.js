@@ -1149,7 +1149,7 @@ describe("selecting what changed", () => {
     await initCommand({});
     // init's own files stay out of the way of the assertions below.
     execFileSync("git", ["add", "-A"], { cwd: root });
-    execFileSync("git", ["commit", "-qm", "init"], { cwd: root });
+    execFileSync("git", ["commit", "-qm", "init", "--allow-empty"], { cwd: root });
     if (configure) {
       const config = await loadConfig(root);
       configure(config);

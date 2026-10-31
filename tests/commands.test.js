@@ -53,11 +53,31 @@ describe("initCommand", () => {
     expect(settings.hooks.PostToolBatch[0]?.hooks).toHaveLength(1);
     expect(settings.hooks.UserPromptSubmit[0]?.hooks[0]?.timeout).toBe(60);
 
-    const gitignore = await fs.readFile(path.join(root, ".gitignore"), "utf8");
-    expect(gitignore.match(/\.learning-moments\//g)).toHaveLength(1);
-    await expect(
-      fs.stat(path.join(root, ".claude", "commands", "learning-moments", "status.md"))
-    ).resolves.toBeTruthy();
+    // Ignored through the repository's own exclude file, never .gitignore.
+    await expect(fs.access(path.join(root, ".gitignore"))).rejects.toThrow();
+    const exclude = await fs.readFile(path.join(root, ".git", "info", "exclude"), "utf8");
+    expect(exclude.match(/^\.learning-moments\/$/gm)).toHaveLength(1);
+    expect(exclude.match(/^\.claude\/commands\/learning-moments\/$/gm)).toHaveLength(1);
+    expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: root, encoding: "utf8" })).not.toMatch(
+      /learning-moments/
+    );
+
+    const status = await fs.readFile(path.join(root, ".claude", "commands", "learning-moments", "status.md"), "utf8");
+    const { cliPath } = await import("../src/core/path-self.js");
+    expect(status).toContain(`node ${cliPath()} status`);
+    expect(status).toContain(`allowed-tools: Bash(node ${cliPath()} status *)`);
+  });
+
+  it("with --plugin, leaves hooks and commands to the plugin and removes settings hooks", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await initCommand({ plugin: true });
+
+    await expect(loadConfig(root)).resolves.toBeTruthy();
+    const settings = await readJsonFile(path.join(root, ".claude", "settings.local.json"));
+    expect(Object.keys(settings.hooks)).toHaveLength(0);
+    await expect(fs.access(path.join(root, ".claude", "commands", "learning-moments"))).rejects.toThrow();
   });
 
   it("backs up an unparseable existing config and writes the default", async () => {
@@ -460,6 +480,71 @@ describe("auditCommand", () => {
       write.mockRestore();
       process.exitCode = previous;
       await fs.writeFile(manifestPath(), original);
+    }
+  });
+});
+
+describe("Claude Code plugin", () => {
+  it("ships hooks, skills, and a manifest generated from the install templates", async () => {
+    const { pluginFiles } = await import("../scripts/build-plugin.js");
+    const root = path.resolve(import.meta.dirname, "..");
+    const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+    for (const [rel, content] of Object.entries(pluginFiles(pkg))) {
+      expect(await fs.readFile(path.join(root, rel), "utf8"), `${rel} is stale; run npm run build-plugin`).toBe(content);
+    }
+    for (const rel of [".claude-plugin/plugin.json", "hooks/", "skills/"]) {
+      expect(pkg.files).toContain(rel);
+    }
+  });
+});
+
+describe("doctor", () => {
+  it("passes on a freshly initialized project", async () => {
+    const { doctorCommand } = await import("../src/commands/doctor.js");
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    // The developer's own user settings may enable the plugin.
+    const previousHome = process.env.HOME;
+    process.env.HOME = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-home-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const previous = process.exitCode;
+    try {
+      process.exitCode = 0;
+      await doctorCommand();
+      const failures = log.mock.calls.flat().filter((line) => String(line).startsWith("fail "));
+      // `claude` itself may be absent where the tests run.
+      expect(failures.filter((line) => !String(line).includes("Claude Code command"))).toEqual([]);
+    } finally {
+      log.mockRestore();
+      process.exitCode = previous;
+      process.env.HOME = previousHome;
+    }
+  });
+});
+
+describe("doctor plugin detection", () => {
+  it("follows settings precedence: a local false overrides a shared true", async () => {
+    const { doctorCommand } = await import("../src/commands/doctor.js");
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-home-"));
+    await fs.writeFile(path.join(root, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "learning-moments@learning-moments": true } }));
+    const local = await readJsonFile(path.join(root, ".claude", "settings.local.json"));
+    local.enabledPlugins = { "learning-moments@learning-moments": false };
+    await fs.writeFile(path.join(root, ".claude", "settings.local.json"), JSON.stringify(local));
+    const previousHome = process.env.HOME;
+    process.env.HOME = home;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const previous = process.exitCode;
+    try {
+      await doctorCommand();
+      expect(log.mock.calls.flat().join("\n")).not.toContain("Hooks installed once");
+    } finally {
+      log.mockRestore();
+      process.exitCode = previous;
+      process.env.HOME = previousHome;
     }
   });
 });

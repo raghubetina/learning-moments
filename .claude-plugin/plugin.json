@@ -1,0 +1,25 @@
+{
+  "name": "learning-moments",
+  "displayName": "Learning Moments",
+  "version": "0.5.5",
+  "description": "Brief, situated comprehension checks for AI-assisted changes in Claude Code.",
+  "author": {
+    "name": "Raghu Betina"
+  },
+  "homepage": "https://github.com/raghubetina/learning-moments#readme",
+  "repository": "https://github.com/raghubetina/learning-moments",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "claude-code-hooks",
+    "hooks",
+    "learning",
+    "ai-assisted-programming",
+    "developer-tools",
+    "developer-education",
+    "ai-coding-agents",
+    "retrieval-practice",
+    "cognitive-friction"
+  ]
+}

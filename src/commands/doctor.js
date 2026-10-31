@@ -1,15 +1,16 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { settingsPath } from "../core/claude-settings.js";
 import { loadConfig } from "../core/config.js";
-import { pathExists } from "../core/file-utils.js";
-import { findGitRoot } from "../core/git.js";
+import { pathExists, readJsonFile } from "../core/file-utils.js";
+import { findGitRoot, runGit } from "../core/git.js";
 import { scanJsonlFile } from "../core/log.js";
 import { controlPath, dataDir, ledgerPath, noHooksSettingsPath, profilePath, promptsDir, telemetryPath } from "../core/paths.js";
-import { cliPath } from "../core/path-self.js";
+import { cliPath, version } from "../core/path-self.js";
 import { resolveProject } from "../core/project.js";
 
 const execFileAsync = promisify(execFile);
@@ -32,14 +33,60 @@ async function commandAvailable(command, args) {
   }
 }
 
-async function gitignored(projectRoot) {
-  const gitignorePath = path.join(projectRoot, ".gitignore");
+// Asks Git, so .gitignore, info/exclude, and global excludes all count.
+function gitignored(projectRoot) {
   try {
-    const gitignore = await fs.readFile(gitignorePath, "utf8");
-    return gitignore.split(/\r?\n/).includes(".learning-moments/");
+    // check-ignore refuses the literal-pathspec mode runGit sets for diffs.
+    runGit(["--no-literal-pathspecs", "check-ignore", "-q", "--no-index", ".learning-moments/config.json"], projectRoot);
+    return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * The CLI paths that installed settings hooks run, from both settings files.
+ *
+ * @param {string} projectRoot
+ */
+async function settingsHookTargets(projectRoot) {
+  const targets = new Set();
+  for (const shared of [false, true]) {
+    const file = settingsPath(projectRoot, shared);
+    if (!(await pathExists(file))) continue;
+    const settings = await readJsonFile(file).catch(() => null);
+    for (const groups of Object.values(settings?.hooks ?? {})) {
+      for (const group of Array.isArray(groups) ? groups : []) {
+        for (const entry of Array.isArray(group?.hooks) ? group.hooks : []) {
+          const [cli, sub] = Array.isArray(entry?.args) ? entry.args : [];
+          if (entry?.command === "node" && sub === "hook" && typeof cli === "string" && cli.endsWith(path.join("src", "cli.js"))) {
+            targets.add(cli);
+          }
+        }
+      }
+    }
+  }
+  return [...targets];
+}
+
+/**
+ * Whether the Learning Moments plugin is enabled here. Claude Code merges
+ * enabledPlugins per plugin ID, user then project then local, so a later
+ * file can turn off what an earlier one turned on.
+ */
+async function pluginEnabled(projectRoot) {
+  const files = [
+    path.join(os.homedir(), ".claude", "settings.json"),
+    settingsPath(projectRoot, true),
+    settingsPath(projectRoot, false)
+  ];
+  /** @type {Record<string, unknown>} */
+  const merged = {};
+  for (const file of files) {
+    const settings = (await pathExists(file)) ? await readJsonFile(file).catch(() => null) : null;
+    Object.assign(merged, settings?.enabledPlugins ?? {});
+  }
+  return Object.entries(merged).some(([id, on]) => id.startsWith("learning-moments@") && on === true);
 }
 
 export async function doctorCommand() {
@@ -82,12 +129,33 @@ export async function doctorCommand() {
   checks.push({ name: "Profile", ok: await pathExists(profilePath(projectRoot)) });
   checks.push({ name: "Prompt files", ok: await pathExists(promptsDir(projectRoot)) });
   checks.push({ name: "Internal Claude settings", ok: await pathExists(noHooksSettingsPath(projectRoot)) });
-  checks.push({ name: "Learning data ignored by Git", ok: await gitignored(projectRoot) });
+  const plugin = await pluginEnabled(projectRoot);
+  const hookTargets = await settingsHookTargets(projectRoot);
+  checks.push({ name: "Learning data ignored by Git", ok: gitignored(projectRoot) });
+  // Hooks run whatever CLI path init recorded. A Node upgrade or a version
+  // manager can leave that path missing, or pointing at an old release.
+  for (const target of hookTargets) {
+    const pkgFile = path.join(path.dirname(path.dirname(target)), "package.json");
+    const installed = (await pathExists(pkgFile)) ? (await readJsonFile(pkgFile).catch(() => ({}))).version : undefined;
+    checks.push({
+      name: "Hooks run this version",
+      ok: installed === version(),
+      detail: installed
+        ? `hooks run ${installed} from ${target}; this CLI is ${version()}. Run init again to point them here.`
+        : `hooks point to ${target}, which no longer exists. Run init again.`
+    });
+  }
+  if (hookTargets.length > 0 && plugin) {
+    checks.push({
+      name: "Hooks installed once",
+      ok: false,
+      detail: "both the plugin and settings hooks are installed, so every hook runs twice. Run `init --plugin` to remove the settings hooks."
+    });
+  }
   checks.push({
-    name: "Claude local settings",
-    ok:
-      (await pathExists(settingsPath(projectRoot, false))) ||
-      (await pathExists(settingsPath(projectRoot, true)))
+    name: "Hooks installed",
+    ok: plugin || hookTargets.length > 0,
+    detail: plugin ? "by the Learning Moments plugin" : hookTargets.length > 0 ? "in Claude Code settings" : "run init"
   });
   checks.push({
     name: "Can write local data directory",

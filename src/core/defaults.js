@@ -51,11 +51,6 @@ The feedback should be one short sentence the coding assistant can pass to the u
 
 Return JSON matching the provided schema.
 `,
-  "answer-feedback.md": `Give brief feedback on the user's Learning Moment answer.
-
-Keep it to correct / partially correct / likely incorrect plus one concise explanation.
-Do not over-explain unless the user asks.
-`,
   "select-recall.md": `Select delayed recall prompts for Learning Moments.
 
 Prefer moments with low confidence, low grade, high learning value, or explicit recall scheduling.
@@ -67,36 +62,59 @@ Focus on understanding, prediction, testing, or recall rather than generic code 
 `
 };
 
-export const slashCommandPrompts = {
-  "status.md": `---
-description: Show whether Learning Moments is on and how many questions have been asked
----
+/**
+ * The `/learning-moments:*` command prompts, for a given way of running
+ * the CLI: the absolute `node .../src/cli.js` an npm or checkout install
+ * resolves at init, or `node ${CLAUDE_PLUGIN_ROOT}/src/cli.js` in the
+ * plugin. Each pre-approves exactly the command it runs, so a slash
+ * command doesn't stop at a permission prompt to flip one setting.
+ *
+ * @param {string} cli
+ * @param {{ plugin?: boolean }} [options]
+ * @returns {Record<string, { description: string, body: string, allowed: string }>}
+ */
+export function commandPrompts(cli, options = {}) {
+  /** @type {Record<string, { description: string, body: string, allowed: string }>} */
+  const prompts = {
+    status: {
+      description: "Show whether Learning Moments is on and the last question it asked",
+      allowed: `Bash(${cli} status *)`,
+      body: `Run \`${cli} status\` and summarize the result briefly.`
+    },
+    metrics: {
+      description: "Show how often Learning Moments asked, how you answered, and what it cost",
+      allowed: `Bash(${cli} metrics *)`,
+      body: `Run \`${cli} metrics\` and summarize the questions, answers, waiting time, and estimated cost briefly.`
+    },
+    pause: {
+      description: "Pause Learning Moments in this project (stops asking questions)",
+      allowed: `Bash(${cli} pause *)`,
+      body: `Run \`${cli} pause --project\`, then confirm it was paused. A question that is open now is set aside.`
+    },
+    resume: {
+      description: "Resume Learning Moments in this project",
+      allowed: `Bash(${cli} resume *)`,
+      body: `Run \`${cli} resume --project\`, then confirm it is active again.`
+    },
+    verify: {
+      description: "Ask me a question about the current uncommitted changes",
+      allowed: `Bash(${cli} verify *)`,
+      body: `Run \`${cli} verify --session \${CLAUDE_SESSION_ID}\` and show me its output exactly as printed. If it prints a question, stop there: do not answer it, hint at the answer, or explain the change. My next message is my answer.`
+    }
+  };
+  if (options.plugin) {
+    prompts.init = {
+      description: "Turn on Learning Moments in this project",
+      allowed: `Bash(${cli} init *)`,
+      body: `Run \`${cli} init --plugin\` in the project root and summarize what it set up. Learning Moments acts only in projects where this has run.`
+    };
+  }
+  return prompts;
+}
 
-Run \`learning-moments status\` and summarize the result briefly.
-`,
-  "metrics.md": `---
-description: Show Learning Moments timing, interruption rate, and estimated cost
----
-
-Run \`learning-moments metrics\` and summarize the speed, interruption, and estimated cost results briefly.
-`,
-  "pause.md": `---
-description: Pause Learning Moments in this project (stops asking questions)
----
-
-Run \`learning-moments pause --project\`, then confirm it was paused.
-`,
-  "resume.md": `---
-description: Resume Learning Moments in this project
----
-
-Run \`learning-moments resume --project\`, then confirm it is active again.
-`,
-  "verify.md": `---
-description: Ask me a question about the current uncommitted changes
-allowed-tools: Bash(learning-moments verify *)
----
-
-Run \`learning-moments verify --session \${CLAUDE_SESSION_ID}\` and show me its output exactly as printed. If it prints a question, stop there: do not answer it, hint at the answer, or explain the change. My next message is my answer.
-`
-};
+/**
+ * @param {{ description: string, body: string, allowed: string }} prompt
+ */
+export function renderCommandPrompt(prompt) {
+  return `---\ndescription: ${prompt.description}\nallowed-tools: ${prompt.allowed}\n---\n\n${prompt.body}\n`;
+}
