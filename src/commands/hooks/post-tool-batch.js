@@ -1,6 +1,6 @@
 import { immediatePromptBudgetAvailable, classifierBudgetAvailable } from "../../core/budget.js";
 import { classifyCandidate } from "../../core/classifier.js";
-import { loadConfig } from "../../core/config.js";
+import { loadConfig, storedContext } from "../../core/config.js";
 import { candidateFiles } from "../../core/filter.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
 import { changedSinceBaseline, contextForFiles, gitHashObjects, workspaceContext } from "../../core/git.js";
@@ -269,7 +269,8 @@ export async function postToolBatchHook(input) {
     expected_answer_outline: classification.expected_answer_outline,
     classifier_reason: classification.reason,
     candidate_fingerprint: fingerprint,
-    redaction_findings: diff.findings
+    redaction_findings: diff.findings,
+    context_excerpt: storedContext(config, diff.text)
   };
 
   // Phase 2 — re-acquire the lock to decide atomically whether this

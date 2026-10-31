@@ -72,6 +72,9 @@ function buildGradePrompt(input) {
     "Changed files:",
     input.files.map((file) => `- ${file}`).join("\n"),
     "",
+    ...(input.excerpt
+      ? ["Code context when the question was chosen (redacted):", "```diff", input.excerpt, "```", ""]
+      : ["(No code context was stored for this question.)", ""]),
     // Stated here rather than in the editable policy file so that policy
     // files written by older versions still get these labels right.
     "Labels: use not_an_answer when the message does not attempt the question at all (a new",

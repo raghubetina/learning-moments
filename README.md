@@ -165,7 +165,7 @@ The lifecycle is implemented with six Claude Code hooks:
 2. `PostToolUse` records lightweight edit telemetry in the background.
 3. `PostToolBatch` runs in the background after each batch of tool calls. It finds files that changed since the session baseline and, when one is worth it, selects a question. Claude does not wait for it.
 4. `Stop` asks the selected question when Claude finishes its turn, and checks whether earlier questions and feedback were displayed.
-5. `UserPromptSubmit` reads your reply to an open question and grades it.
+5. `UserPromptSubmit` reads your reply to an open question. Claude gives brief feedback right away, judged against the code it already has in context; a separate background process grades the reply against the hidden answer outline for your local record.
 6. `UserPromptExpansion` records slash-command activity in the background.
 
 A question appears in the transcript as Stop hook feedback, and Claude then asks it. Questions arrive at the end of a turn rather than in the middle of a task, so you can read Claude's summary and the question together, and Claude's work is never paused waiting for an answer. A selected question that is not asked within 30 minutes is dropped.
@@ -182,7 +182,7 @@ The hooks act only in a project where `learning-moments init` ran, and never cre
 - `Test` asks for a concrete check that would expose a misunderstanding.
 - `Recall` would ask for the rationale behind an earlier change. It is part of the design vocabulary but is not implemented yet.
 
-The selector generates an expected-answer outline for grading, but that outline is not inserted into the conversation before you answer.
+The selector also writes an expected-answer outline. Only the background grader sees it; it enters the conversation only if you say you don't know, as the explanation.
 
 ### Replying to a question
 
@@ -192,7 +192,7 @@ Your next message after a question is read as a reply, with a few exceptions so 
 - `/learning-moments:pause` declines the question and pauses the project.
 - Other slash commands, and messages Claude Code sends on its own (such as a background agent's report), leave the question open.
 - "I don't know" or "not sure" gets a short explanation instead of a grade.
-- A message the grader finds is not an attempt, such as a new instruction, gets no feedback.
+- A message that is not an attempt, such as a new instruction, gets no feedback; the grader records it as `not_an_answer`.
 
 Only one question is open per session, and a question nobody answers within two hours stops capturing messages.
 
@@ -236,8 +236,9 @@ Learning Moments separates stable integration code from editable pedagogical pol
 
 - `profile.md` describes the skills you want to preserve and your interruption preferences.
 - `classify-change.md` defines what makes a question worthwhile.
-- `grade-answer.md` defines the 0-3 rubric and feedback style.
+- `grade-answer.md` defines the 0-3 rubric the background grader uses.
 - `config.json` controls models, timeouts, budgets, ignored paths, and context limits.
+- `context_storage` in `config.json` sets how much redacted code is kept with each question for grading: `excerpts` (the default, up to 4,000 characters), `full`, or `metadata_only` (file names only).
 
 The profile, classifier policy, and grading rubric are read again when the relevant model call runs. Edit the Markdown, save it, and the next selection or grading call uses the new policy. There is no prompt build step and no restart required.
 
@@ -335,7 +336,7 @@ Metrics include:
 - questions, answers, skips, and grades; and
 - Claude-reported token use and estimated cost.
 
-Selection runs in a background hook, so it costs tokens but not waiting time. Grading still runs before Claude answers your reply.
+Selection and grading both run in the background, so they cost tokens but not waiting time.
 
 ## Related projects
 
