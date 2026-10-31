@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { attemptClaudeCall } from "./claude-call.js";
 import { runClaudeStructured } from "./claude.js";
 import { defaultProfile, defaultPrompts } from "./defaults.js";
 import { profilePath, promptsDir } from "./paths.js";
@@ -112,10 +113,8 @@ async function readTextOrDefault(filePath, fallback) {
   }
 }
 
-function buildClassifierPrompt(profile, instruction, input) {
+function buildClassifierPrompt(profile, input) {
   return [
-    instruction.trim(),
-    "",
     "User profile:",
     profile.trim(),
     "",
@@ -129,6 +128,10 @@ function buildClassifierPrompt(profile, instruction, input) {
   ].join("\n");
 }
 
+/**
+ * @returns {Promise<import("./claude-call.js").ClaudeAttempt<ReturnType<typeof parseClassifierOutput>> | null>}
+ *   null when there is nothing to classify
+ */
 export async function classifyCandidate(projectRoot, config, input) {
   if (input.files.length === 0 || input.diff.trim().length === 0) {
     return null;
@@ -142,20 +145,18 @@ export async function classifyCandidate(projectRoot, config, input) {
     )
   ]);
 
-  try {
-    const result = await runClaudeStructured({
-      projectRoot,
-      config,
-      prompt: buildClassifierPrompt(profile, instruction, input),
-      schema: classifierJsonSchema,
-      model: config.claude.classifier_model,
-      timeoutSeconds: config.claude.classifier_timeout_seconds
-    });
-    return {
-      classification: parseClassifierOutput(result.output),
-      metrics: result.metrics
-    };
-  } catch {
-    return null;
-  }
+  return attemptClaudeCall(
+    () =>
+      runClaudeStructured({
+        projectRoot,
+        config,
+        system: instruction.trim(),
+        prompt: buildClassifierPrompt(profile, input),
+        schema: classifierJsonSchema,
+        model: config.claude.classifier_model,
+        effort: config.claude.classifier_effort,
+        timeoutSeconds: config.claude.classifier_timeout_seconds
+      }),
+    parseClassifierOutput
+  );
 }

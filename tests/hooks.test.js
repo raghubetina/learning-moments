@@ -13,6 +13,7 @@ import { postToolBatchHook } from "../src/commands/hooks/post-tool-batch.js";
 import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
+import { ClaudeCallError } from "../src/core/claude-call.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
 import { runHook } from "../src/core/hook-runner.js";
@@ -143,7 +144,9 @@ describe("hook flow", () => {
     const root = await tempGitRepo();
     process.chdir(root);
     await initCommand({});
-    vi.mocked(runClaudeStructured).mockRejectedValueOnce(new Error("classifier unavailable"));
+    vi.mocked(runClaudeStructured).mockRejectedValueOnce(
+      new ClaudeCallError("timeout", "classifier unavailable", { wall_duration_ms: 45000 })
+    );
 
     const common = {
       session_id: "session-1",
@@ -167,7 +170,9 @@ describe("hook flow", () => {
 
     expect(askOutput).toBeNull();
     const events = await readEvents(root);
-    expect(events.map((event) => event.type)).toContain("classifier_failed_open");
+    const failure = events.find((event) => event.type === "classifier_failed_open");
+    expect(failure?.failure_reason).toBe("timeout");
+    expect(failure?.metrics).toEqual({ wall_duration_ms: 45000 });
     expect(events.map((event) => event.type)).not.toContain("moment_injected");
   });
 

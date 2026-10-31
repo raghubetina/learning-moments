@@ -83,6 +83,11 @@ function usd(value) {
   return `$${value.toFixed(4)}`;
 }
 
+function reasons(counts) {
+  const entries = Object.entries(counts);
+  return entries.length === 0 ? "" : ` (${entries.map(([reason, n]) => `${reason} ${n}`).join(", ")})`;
+}
+
 export async function metricsCommand(options) {
   const projectRoot = findGitRoot(process.cwd());
   const windowMs = sinceMs(options.since);
@@ -97,8 +102,13 @@ export async function metricsCommand(options) {
   const hookDurations = hookEvents.map((event) => numberValue(event.duration_ms));
   const classifierCompleted = events.filter((event) => event.type === "classifier_completed");
   const graderCompleted = events.filter((event) => event.type === "grader_completed");
-  const classifierMetrics = summarizeClaude(classifierCompleted);
-  const graderMetrics = summarizeClaude(graderCompleted);
+  const classifierFailed = events.filter((event) => event.type === "classifier_failed_open");
+  const graderFailed = events.filter((event) => event.type === "grader_failed_open");
+  // Failed calls carry metrics when they ran long enough to be billed or
+  // timed; count their cost and time alongside completed calls.
+  const withMetrics = (event) => event.metrics && typeof event.metrics === "object";
+  const classifierMetrics = summarizeClaude([...classifierCompleted, ...classifierFailed.filter(withMetrics)]);
+  const graderMetrics = summarizeClaude([...graderCompleted, ...graderFailed.filter(withMetrics)]);
 
   const summary = {
     projectRoot,
@@ -115,7 +125,8 @@ export async function metricsCommand(options) {
       calls: events.filter((event) => event.type === "classifier_called").length,
       completed: classifierCompleted.length,
       declined: events.filter((event) => event.type === "classifier_declined").length,
-      failed_open: events.filter((event) => event.type === "classifier_failed_open").length,
+      failed_open: classifierFailed.length,
+      failure_reasons: countBy(classifierFailed, "failure_reason"),
       duplicate_candidates: events.filter((event) => event.type === "candidate_already_seen").length,
       avg_wall_duration_ms: avg(classifierMetrics.wall_duration_ms, classifierMetrics.calls),
       total_cost_usd: classifierMetrics.total_cost_usd,
@@ -126,7 +137,8 @@ export async function metricsCommand(options) {
     },
     grader: {
       calls: graderCompleted.length,
-      failed_open: events.filter((event) => event.type === "grader_failed_open").length,
+      failed_open: graderFailed.length,
+      failure_reasons: countBy(graderFailed, "failure_reason"),
       avg_wall_duration_ms: avg(graderMetrics.wall_duration_ms, graderMetrics.calls),
       total_cost_usd: graderMetrics.total_cost_usd,
       input_tokens: graderMetrics.input_tokens,
@@ -159,14 +171,18 @@ export async function metricsCommand(options) {
   console.log(`  attempts: ${summary.classifier.calls}`);
   console.log(`  checked: ${summary.classifier.completed}`);
   console.log(`  no question needed: ${summary.classifier.declined}`);
-  console.log(`  selection failures that did not interrupt you: ${summary.classifier.failed_open}`);
+  console.log(
+    `  selection failures that did not interrupt you: ${summary.classifier.failed_open}${reasons(summary.classifier.failure_reasons)}`
+  );
   console.log(`  repeated changes skipped: ${summary.classifier.duplicate_candidates}`);
   console.log(`  avg latency: ${seconds(summary.classifier.avg_wall_duration_ms)}`);
   console.log(`  estimated cost: ${usd(summary.classifier.total_cost_usd)}`);
   console.log("");
   console.log("Answer feedback:");
   console.log(`  attempts: ${summary.grader.calls}`);
-  console.log(`  feedback failures that did not interrupt you: ${summary.grader.failed_open}`);
+  console.log(
+    `  feedback failures that did not interrupt you: ${summary.grader.failed_open}${reasons(summary.grader.failure_reasons)}`
+  );
   console.log(`  avg latency: ${seconds(summary.grader.avg_wall_duration_ms)}`);
   console.log(`  estimated cost: ${usd(summary.grader.total_cost_usd)}`);
   console.log("");

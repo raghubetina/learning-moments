@@ -15,6 +15,7 @@ import {
 
 /**
  * @typedef {"active" | "observe_only"} Mode
+ * @typedef {"default" | "low" | "medium" | "high" | "xhigh" | "max"} Effort
  * @typedef {"metadata_only" | "excerpts" | "full"} ContextStorage
  *
  * @typedef {Object} ConfigFrequency
@@ -41,6 +42,8 @@ import {
  * @property {string} grading_model
  * @property {number} classifier_timeout_seconds
  * @property {number} grader_timeout_seconds
+ * @property {Effort} classifier_effort
+ * @property {Effort} grading_effort
  * @property {boolean} use_bare_when_compatible
  *
  * @typedef {Object} Config
@@ -60,6 +63,13 @@ import {
 const CONTEXT_STORAGE = ["metadata_only", "excerpts", "full"];
 /** @type {readonly Mode[]} */
 const MODES = ["active", "observe_only"];
+/**
+ * "default" passes no `--effort` flag, so the nested call inherits the
+ * developer's own `effortLevel` setting.
+ *
+ * @type {readonly Effort[]}
+ */
+const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"];
 
 /**
  * @param {unknown} value
@@ -142,6 +152,8 @@ const CLAUDE_KEYS = [
   "grading_model",
   "classifier_timeout_seconds",
   "grader_timeout_seconds",
+  "classifier_effort",
+  "grading_effort",
   "use_bare_when_compatible"
 ];
 
@@ -227,6 +239,14 @@ export function parseConfig(raw, loc = "config") {
         1,
         `${loc}.claude.grader_timeout_seconds`
       ),
+      classifier_effort:
+        claude.classifier_effort === undefined
+          ? defaultConfig.claude.classifier_effort
+          : assertEnum(claude.classifier_effort, EFFORTS, `${loc}.claude.classifier_effort`),
+      grading_effort:
+        claude.grading_effort === undefined
+          ? defaultConfig.claude.grading_effort
+          : assertEnum(claude.grading_effort, EFFORTS, `${loc}.claude.grading_effort`),
       use_bare_when_compatible: assertBoolean(
         claude.use_bare_when_compatible,
         `${loc}.claude.use_bare_when_compatible`
@@ -284,6 +304,8 @@ export const defaultConfig = {
     grading_model: "opus",
     classifier_timeout_seconds: 45,
     grader_timeout_seconds: 45,
+    classifier_effort: "low",
+    grading_effort: "low",
     use_bare_when_compatible: false
   }
 };

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
+import { ClaudeCallError } from "./claude-call.js";
 import { noHooksSettingsPath } from "./paths.js";
 
 const execFileAsync = promisify(execFile);
@@ -122,14 +123,35 @@ function extractMetrics(parsed, wallDurationMs, requestedModel) {
   };
 }
 
-export async function runClaudeStructured(request) {
-  if (!request.config.claude.enabled || process.env.LEARNING_MOMENTS_DISABLE_CLAUDE === "1") {
-    throw new Error("Claude model calls are disabled.");
-  }
+/**
+ * Environment for nested `claude -p` calls. The selector and grader take
+ * their policy from Learning Moments' own prompt files. The developer's
+ * CLAUDE.md files and auto memory are written for the coding agent: they
+ * add thousands of input tokens to every call and steer the nested model
+ * with instructions that have nothing to do with selecting or grading.
+ *
+ * @param {NodeJS.ProcessEnv} [baseEnv]
+ */
+export function nestedClaudeEnv(baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    LEARNING_MOMENTS_INTERNAL: "1",
+    CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"
+  };
+}
 
+/**
+ * @param {{ projectRoot: string, config: any, prompt: string, system: string,
+ *   schema: object, model: string, effort?: string }} request
+ * @returns {Promise<string[]>}
+ */
+export async function nestedClaudeArgs(request) {
   const args = [
     "-p",
     request.prompt,
+    "--system-prompt",
+    request.system,
     "--output-format",
     "json",
     "--no-session-persistence",
@@ -138,6 +160,13 @@ export async function runClaudeStructured(request) {
     "--setting-sources",
     "user",
     "--disable-slash-commands",
+    // `--tools` governs only built-in tools. Without the next two flags
+    // the nested process loads every MCP server the developer configured
+    // and can call an allowed MCP tool, whose result would bypass the
+    // bounded, redacted context this package builds.
+    "--strict-mcp-config",
+    "--disallowedTools",
+    "mcp__*",
     "--tools",
     "",
     "--json-schema",
@@ -150,21 +179,96 @@ export async function runClaudeStructured(request) {
   if (request.model !== "default") {
     args.push("--model", request.model);
   }
+  // Without an explicit level the nested call inherits the developer's
+  // `effortLevel` setting, which can make a short classification take
+  // most of its timeout.
+  if (request.effort && request.effort !== "default") {
+    args.push("--effort", request.effort);
+  }
+  return args;
+}
 
+/**
+ * Map a failed `execFile` call to a bounded failure category.
+ *
+ * @param {any} error
+ * @returns {import("./claude-call.js").ClaudeFailureReason}
+ */
+export function execFailureReason(error) {
+  if (error?.code === "ENOENT") return "claude_not_found";
+  if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return "output_too_large";
+  if (error?.killed) return "timeout";
+  if (typeof error?.code !== "number") return "spawn_error";
+  const text = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+  if (/usage limit|rate limit|\b429\b|overloaded/i.test(text)) return "rate_limited";
+  if (/not logged in|\/login|invalid api key|authentication_error|\b401\b/i.test(text)) return "auth";
+  return "exit_nonzero";
+}
+
+/**
+ * @param {{ projectRoot: string, config: any, prompt: string, system: string,
+ *   schema: object, model: string, effort?: string, timeoutSeconds: number }} request
+ */
+export async function runClaudeStructured(request) {
+  if (!request.config.claude.enabled || process.env.LEARNING_MOMENTS_DISABLE_CLAUDE === "1") {
+    throw new ClaudeCallError("disabled", "Claude model calls are disabled.");
+  }
+
+  const args = await nestedClaudeArgs(request);
   const startedAt = Date.now();
-  const { stdout } = await execFileAsync("claude", args, {
-    cwd: request.projectRoot,
-    env: {
-      ...process.env,
-      LEARNING_MOMENTS_INTERNAL: "1"
-    },
-    timeout: request.timeoutSeconds * 1000,
-    maxBuffer: 10 * 1024 * 1024
+  const failureMetrics = () => ({
+    wall_duration_ms: Date.now() - startedAt,
+    requested_model: request.model,
+    requested_effort: request.effort
   });
 
-  const parsed = parseJsonFromText(stdout);
-  return {
-    output: unwrapClaudeOutput(parsed),
-    metrics: extractMetrics(parsed, Date.now() - startedAt, request.model)
-  };
+  /** @param {unknown} parsed */
+  const resultMetrics = (parsed) => ({
+    ...extractMetrics(parsed, Date.now() - startedAt, request.model),
+    requested_effort: request.effort
+  });
+
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync("claude", args, {
+      cwd: request.projectRoot,
+      env: nestedClaudeEnv(),
+      timeout: request.timeoutSeconds * 1000,
+      maxBuffer: 10 * 1024 * 1024
+    }));
+  } catch (error) {
+    // A provider error after a billed turn still prints the result
+    // envelope before the nonzero exit; keep its usage when it parses.
+    let metrics = failureMetrics();
+    const output = /** @type {{ stdout?: unknown }} */ (error)?.stdout;
+    if (typeof output === "string" && output.trim().length > 0) {
+      try {
+        metrics = resultMetrics(parseJsonFromText(output));
+      } catch {
+        // Not an envelope; wall time is all there is.
+      }
+    }
+    throw new ClaudeCallError(execFailureReason(error), "claude -p failed", metrics);
+  }
+
+  let parsed;
+  try {
+    parsed = parseJsonFromText(stdout);
+  } catch {
+    throw new ClaudeCallError("invalid_json", "claude -p returned unparseable output", failureMetrics());
+  }
+  const metrics = resultMetrics(parsed);
+  const record = resultRecord(parsed);
+  if (record?.is_error === true) {
+    const text = typeof record.result === "string" ? record.result : "";
+    const reason = /usage limit|rate limit|overloaded/i.test(text) ? "rate_limited" : "cli_error";
+    throw new ClaudeCallError(reason, "claude -p reported an error result", metrics);
+  }
+  let output;
+  try {
+    output = unwrapClaudeOutput(parsed);
+  } catch {
+    throw new ClaudeCallError("invalid_output", "claude -p returned no structured output", metrics);
+  }
+  return { output, metrics };
 }

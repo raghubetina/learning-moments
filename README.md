@@ -233,6 +233,7 @@ Defaults:
 | Maximum diff/context | 12,000 characters |
 | Classifier model | `opus` |
 | Grader model | `opus` |
+| Classifier and grader effort | `low` |
 | Model-call timeout | 45 seconds |
 
 `init` preserves valid existing configuration, profiles, and prompt policies. It refreshes the installed hooks and Claude Code command files.
@@ -248,7 +249,7 @@ Before a model call, the tool:
 - skips large and binary untracked files;
 - caps both path count and context size;
 - redacts common credential formats in diffs and answers;
-- disables tools, hooks, slash commands, and session persistence in the nested Claude process; and
+- runs the nested Claude process with built-in tools, MCP servers and tools, hooks, slash commands, CLAUDE.md files, auto memory, and session persistence disabled; and
 - validates model responses against strict JSON schemas.
 
 These controls reduce exposure but cannot catch every secret. Review `.learning-moments/config.json` and `src/core/redaction.js` before using the tool on sensitive code. Use it only in repositories you trust. Claude Code's non-interactive `-p` mode does not show the workspace trust dialog.
@@ -295,7 +296,9 @@ The command reports installation mode, hook entrypoints, runtime dependencies, l
 
 ## Performance and cost
 
-Model selection and grading cost time and tokens. Learning Moments records hook latency, classifier and grader latency, token use, cache tokens, and Claude-reported estimated cost:
+Model selection and grading cost time and tokens. Each nested call sends only Learning Moments' own instructions, your profile, and the bounded context, with an explicit effort level (`claude.classifier_effort` and `claude.grading_effort`, default `low`). Set either to `default` to inherit your Claude Code `effortLevel` instead; higher levels made classification slower and costlier without clearly better questions in local testing.
+
+Learning Moments records hook latency, classifier and grader latency, token use, cache tokens, Claude-reported estimated cost, and why a failed model call failed (for example `timeout`, `rate_limited`, or `invalid_output`):
 
 ```bash
 learning-moments metrics
