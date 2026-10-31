@@ -1,5 +1,5 @@
 import { loadConfig } from "../../core/config.js";
-import { gradeAnswer } from "../../core/grader.js";
+import { runInBackground } from "../../core/background.js";
 import { resolveProject } from "../../core/project.js";
 import { parseUserPromptSubmitInput } from "../../core/hook-input.js";
 import { appendEvent, readLedger } from "../../core/log.js";
@@ -121,57 +121,22 @@ export async function userPromptSubmitHook(input) {
     };
   }
 
-  const gradeResult = await gradeAnswer(projectRoot, config, {
-    question: pending.question,
-    expectedAnswerOutline: pending.expected_answer_outline,
-    answer: redactedAnswer.text,
-    files: pending.files
-  });
-
-  if (!gradeResult.ok) {
+  // Claude already has the change in context, so it gives the feedback
+  // now, with no model call in the way. Structured grading for the record
+  // runs in the background.
+  const spawnError = await runInBackground(["grade", pending.id, "--project", projectRoot]);
+  if (spawnError) {
     await appendEvent(projectRoot, {
       type: "grader_failed_open",
       ...momentFields,
-      failure_reason: gradeResult.reason,
-      metrics: gradeResult.metrics
+      failure_reason: "spawn_error"
     });
-    await complete("grader_failed_open", {
-      moment_id: pending.id,
-      short_id: pending.short_id,
-      failure_reason: gradeResult.reason
-    });
-    return null;
   }
-
-  const grade = gradeResult.value;
-  await appendEvent(projectRoot, {
-    type: "grader_completed",
-    ...momentFields,
-    metrics: gradeResult.metrics
-  });
-
-  await appendEvent(projectRoot, {
-    type: "grade_created",
-    ...momentFields,
-    grade: grade.grade,
-    label: grade.label,
-    feedback: grade.feedback,
-    grader_reason: grade.reason,
-    confidence: grade.confidence
-  });
-
-  // The message was something else, such as a new instruction. Feedback
-  // on it would read as a scolding; let the conversation carry on.
-  if (grade.label === "not_an_answer") {
-    await complete("not_an_answer", { moment_id: pending.id, short_id: pending.short_id });
-    return null;
-  }
-
   await appendEvent(projectRoot, {
     type: "feedback_injected",
     ...momentFields,
     files: pending.files,
-    feedback: grade.feedback
+    feedback_kind: "agent"
   });
   await complete("feedback_injected", { moment_id: pending.id, short_id: pending.short_id });
 
@@ -179,16 +144,15 @@ export async function userPromptSubmitHook(input) {
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
       additionalContext: [
-        `The user just answered Learning Moment \`${pending.short_id}\`.`,
+        `The user's message is likely their reply to Learning Moment \`${pending.short_id}\`.`,
         "",
         "Question:",
         pending.question,
         "",
-        "Give the user this brief feedback:",
-        grade.feedback,
-        "",
-        `Internal grade: ${grade.grade}/3 (${grade.label}, confidence ${grade.confidence}).`,
-        "Do not mention the numeric grade unless the user asks."
+        // The hidden answer outline stays out of the conversation: this
+        // message may not be an answer at all, and Claude has the code to
+        // judge against. The background grader uses the outline.
+        `If the message answers the question, the user wants brief feedback first, starting with "Learning Moment ${pending.short_id}:": one or two sentences, judged against the code, on what is right and what is missing, with no score. Then any other request in the message gets handled as usual. If the message is not an answer to the question, the Learning Moment can be ignored.`
       ].join("\n")
     }
   };

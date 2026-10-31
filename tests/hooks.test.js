@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/core/claude.js", () => ({
   runClaudeStructured: vi.fn()
 }));
+// Background grading would spawn a real CLI process and a real model call.
+vi.mock("../src/core/background.js", () => ({
+  runInBackground: vi.fn(async () => null)
+}));
 
 import { initCommand } from "../src/commands/init.js";
 import { postToolBatchHook } from "../src/commands/hooks/post-tool-batch.js";
@@ -14,6 +18,8 @@ import { postToolUseHook } from "../src/commands/hooks/post-tool-use.js";
 import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
+import { gradeCommand } from "../src/commands/grade.js";
+import { runInBackground } from "../src/core/background.js";
 import { ClaudeCallError } from "../src/core/claude-call.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
@@ -63,7 +69,18 @@ beforeEach(() => {
   previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
   delete process.env.CLAUDE_PROJECT_DIR;
   vi.mocked(runClaudeStructured).mockReset();
+  vi.mocked(runInBackground).mockReset();
+  vi.mocked(runInBackground).mockResolvedValue(null);
 });
+
+// Run the grading that UserPromptSubmit handed to a background process.
+async function runBackgroundGrading() {
+  for (const [args] of vi.mocked(runInBackground).mock.calls) {
+    expect(args[0]).toBe("grade");
+    await gradeCommand(args[1], { project: args[3] });
+  }
+  vi.mocked(runInBackground).mockClear();
+}
 
 afterEach(() => {
   process.chdir(previousCwd);
@@ -282,9 +299,13 @@ describe("hook flow", () => {
       prompt: "The README claim changed, and I would verify the rendered docs or a docs test."
     });
 
-    expect(answerOutput?.hookSpecificOutput.additionalContext).toContain("brief feedback");
-    expect(answerOutput?.hookSpecificOutput.additionalContext).toContain("Correct:");
-    expect(answerOutput?.hookSpecificOutput.additionalContext).toContain("The user just answered");
+    const feedbackContext = answerOutput?.hookSpecificOutput.additionalContext;
+    expect(feedbackContext).toContain("brief feedback");
+    expect(feedbackContext).not.toContain("A strong answer names the README claim");
+    expect(feedbackContext).toMatch(/starting with "Learning Moment lm_[0-9a-f]{4}:"/);
+    // Claude gives the feedback; the grader runs afterward, off the prompt path.
+    expect(runClaudeStructured).toHaveBeenCalledTimes(1);
+    await runBackgroundGrading();
 
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).toContain("session_baseline_created");
@@ -737,6 +758,7 @@ describe("hook flow", () => {
     expect(Array.isArray(answer.redaction_findings)).toBe(true);
     expect(answer.redaction_findings[0]?.type).toBe("ANTHROPIC_KEY");
 
+    await runBackgroundGrading();
     const graderCall = vi.mocked(runClaudeStructured).mock.calls[1];
     expect(graderCall[0].prompt).not.toContain(FAKE_KEY);
     expect(graderCall[0].prompt).toContain("[REDACTED_ANTHROPIC_KEY");
@@ -800,10 +822,11 @@ describe("hook flow", () => {
       hook_event_name: "UserPromptSubmit",
       prompt: "README.md changed."
     });
+    const { short_id: shortId } = (await readEvents(root)).find((event) => event.type === "moment_injected");
     await stopHook({
       ...common,
       hook_event_name: "Stop",
-      last_assistant_message: "Partially correct: you named the file but not the verification."
+      last_assistant_message: `Learning Moment ${shortId}: partly right; you named the file but not the verification.`
     });
 
     const events = await readEvents(root);
@@ -861,12 +884,8 @@ describe("answer capture", () => {
 
     expect(await reply(root, "/compact")).toBeNull();
     expect(await reply(root, "<task-notification>agent finished</task-notification>")).toBeNull();
-    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
-      output: { grade: 3, label: "correct", feedback: "Right.", reason: "Matches.", confidence: 0.9 },
-      metrics: testMetrics
-    });
     const output = await reply(root, "It changes the README text");
-    expect(output?.hookSpecificOutput.additionalContext).toContain("Right.");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("brief feedback");
     const answers = (await readEvents(root)).filter((event) => event.type === "answer_received");
     expect(answers.map((event) => event.answer_text)).toEqual(["It changes the README text"]);
   });
@@ -882,11 +901,7 @@ describe("answer capture", () => {
     await stop(`Learning Moment ${shortId}: What does the change do?`);
     expect(await reply(root, "/learning-moments:status")).toBeNull();
     await stop("Learning Moments is enabled.");
-    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
-      output: { grade: 2, label: "partially_correct", feedback: "Close.", reason: "Partly.", confidence: 0.8 },
-      metrics: testMetrics
-    });
-    expect((await reply(root, "It edits the README"))?.hookSpecificOutput.additionalContext).toContain("Close.");
+    expect((await reply(root, "It edits the README"))?.hookSpecificOutput.additionalContext).toContain("brief feedback");
     const events = await readEvents(root);
     expect(events.map((event) => event.type)).not.toContain("moment_injection_missed");
   });
@@ -916,7 +931,28 @@ describe("answer capture", () => {
     expect(events.map((event) => event.type)).not.toContain("grade_created");
   });
 
-  it("gives no feedback when the grader finds the message was not an answer", async () => {
+  it("keeps the hidden outline out of the conversation for any reply but \"I don't know\"", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    const output = await reply(root, "Now rename the helper and update its callers");
+    expect(output?.hookSpecificOutput.additionalContext).not.toContain("It changes the file.");
+  });
+
+  it("fails open when the background grader cannot start", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await injectMoment(root);
+    vi.mocked(runInBackground).mockResolvedValueOnce(new Error("spawn ENOENT"));
+    const output = await reply(root, "It edits the README");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("brief feedback");
+    const failure = (await readEvents(root)).find((event) => event.type === "grader_failed_open");
+    expect(failure?.failure_reason).toBe("spawn_error");
+  });
+
+  it("lets Claude set aside a non-answer and records the grader's not_an_answer label", async () => {
     const root = await tempGitRepo();
     process.chdir(root);
     await initCommand({});
@@ -926,10 +962,11 @@ describe("answer capture", () => {
       metrics: testMetrics
     });
 
-    expect(await reply(root, "Now rename the helper and update its callers")).toBeNull();
+    const output = await reply(root, "Now rename the helper and update its callers");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("If the message is not an answer");
+    await runBackgroundGrading();
     const events = await readEvents(root);
     expect(events.find((event) => event.type === "grade_created")?.label).toBe("not_an_answer");
-    expect(events.map((event) => event.type)).not.toContain("feedback_injected");
   });
 
   it("stops treating messages as answers once a question is two hours old", async () => {
@@ -1247,5 +1284,61 @@ describe("selecting what changed", () => {
     expect(promptOf(1)).toContain("Questions already asked recently");
     expect(promptOf(1)).toContain("- What does the change do?");
     expect(promptOf(0)).not.toContain("Questions already asked recently");
+  });
+});
+
+describe("background grading", () => {
+  async function answeredMoment(configure) {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    if (configure) {
+      const config = await loadConfig(root);
+      configure(config);
+      await writeConfig(root, config);
+    }
+    await injectMoment(root);
+    await reply(root, "It changes what the README says");
+    return root;
+  }
+  const graded = { grade: 2, label: "partially_correct", feedback: "Close.", reason: "Partly.", confidence: 0.8 };
+
+  it("keeps a redacted excerpt with the question and shows it to the grader", async () => {
+    const root = await answeredMoment();
+    const moment = (await readEvents(root)).find((event) => event.type === "moment_injected");
+    expect(moment.context_excerpt).toContain("+after");
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: graded, metrics: testMetrics });
+    await runBackgroundGrading();
+    expect(vi.mocked(runClaudeStructured).mock.calls.at(-1)[0].prompt).toContain("+after");
+  });
+
+  it("stores no code when context_storage is metadata_only", async () => {
+    const root = await answeredMoment((config) => {
+      config.context_storage = "metadata_only";
+    });
+    const moment = (await readEvents(root)).find((event) => event.type === "moment_injected");
+    expect(moment.context_excerpt).toBeUndefined();
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: graded, metrics: testMetrics });
+    await runBackgroundGrading();
+    expect(vi.mocked(runClaudeStructured).mock.calls.at(-1)[0].prompt).toContain("No code context was stored");
+  });
+
+  it("grades an answer once even if grading starts twice", async () => {
+    const root = await answeredMoment();
+    const [args] = vi.mocked(runInBackground).mock.calls[0];
+    vi.mocked(runClaudeStructured).mockResolvedValue({ output: graded, metrics: testMetrics });
+    await gradeCommand(args[1], { project: args[3] });
+    await gradeCommand(args[1], { project: args[3] });
+    const grades = (await readEvents(root)).filter((event) => event.type === "grade_created");
+    expect(grades).toHaveLength(1);
+    vi.mocked(runClaudeStructured).mockReset();
+  });
+
+  it("records a failed grade without affecting the conversation", async () => {
+    const root = await answeredMoment();
+    vi.mocked(runClaudeStructured).mockRejectedValueOnce(new ClaudeCallError("timeout", "slow", { wall_duration_ms: 45000 }));
+    await runBackgroundGrading();
+    const failure = (await readEvents(root)).find((event) => event.type === "grader_failed_open");
+    expect(failure?.failure_reason).toBe("timeout");
   });
 });

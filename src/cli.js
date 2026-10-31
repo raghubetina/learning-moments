@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { auditCommand } from "./commands/audit.js";
 import { deleteDataCommand } from "./commands/delete-data.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { gradeCommand } from "./commands/grade.js";
 import { postToolBatchHook } from "./commands/hooks/post-tool-batch.js";
 import { postToolUseHook } from "./commands/hooks/post-tool-use.js";
 import { sessionStartHook } from "./commands/hooks/session-start.js";
@@ -41,6 +42,7 @@ Commands:
   delete-data [--logs-only]           Delete .learning-moments (or only truncate telemetry)
   audit [--json]                      Print install mode, hook paths, and file hashes
   hook <event>                        Internal: Claude Code hook entrypoint
+  grade <moment-id> --project <dir>   Internal: background grading of an answer
 
 Other:
   --version, -v   print version
@@ -136,6 +138,14 @@ const dispatch = /** @type {Record<string, (args: string[]) => Promise<void>>} *
       throw new Error("override requires --grade <0-3>");
     }
     await overrideCommand(momentId, { grade: values.grade, note: values.note });
+  },
+
+  async grade(args) {
+    const { values, positionals } = parse(args, { project: { type: "string" } });
+    if (!positionals[0] || typeof values.project !== "string") {
+      throw new Error("grade requires a moment id and --project <dir>");
+    }
+    await gradeCommand(positionals[0], { project: values.project });
   },
 
   async "delete-data"(args) {

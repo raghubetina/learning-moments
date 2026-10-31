@@ -295,6 +295,24 @@ export const defaultConfig = {
   }
 };
 
+const EXCERPT_CHARS = 4000;
+
+/**
+ * The redacted code context to keep with a question, per
+ * `context_storage`: none, a bounded excerpt, or everything the selector
+ * saw. The grader and delayed recall use it to judge answers against the
+ * code rather than against the selector's outline alone.
+ *
+ * @param {Config} config
+ * @param {string} text already redacted
+ * @returns {string | undefined}
+ */
+export function storedContext(config, text) {
+  if (config.context_storage === "metadata_only" || text.length === 0) return undefined;
+  if (config.context_storage === "full" || text.length <= EXCERPT_CHARS) return text;
+  return `${text.slice(0, EXCERPT_CHARS)}\n[excerpt truncated]\n`;
+}
+
 /**
  * @param {string} projectRoot
  * @returns {Promise<Config>}

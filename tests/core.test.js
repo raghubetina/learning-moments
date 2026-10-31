@@ -632,10 +632,12 @@ describe("nested claude -p isolation", () => {
       );
       previousPath = process.env.PATH;
       process.env.PATH = `${bin}${path.delimiter}${previousPath}`;
+      delete process.env.LEARNING_MOMENTS_DISABLE_CLAUDE;
     });
 
     afterEach(() => {
       process.env.PATH = previousPath;
+      process.env.LEARNING_MOMENTS_DISABLE_CLAUDE = "1";
     });
 
     async function respond(body, exitCode) {
@@ -939,5 +941,24 @@ describe("event-registry routing for session baselines", () => {
     const control = await readControl(root);
     expect(ledger.find((e) => e.type === "session_baseline_created")).toBeUndefined();
     expect(control.find((e) => e.type === "session_baseline_created")).toBeDefined();
+  });
+});
+
+describe("runInBackground", () => {
+  it("resolves with the error instead of crashing when the process cannot start", async () => {
+    const { runInBackground } = await import("../src/core/background.js");
+    const previous = process.execPath;
+    Object.defineProperty(process, "execPath", { value: "/nonexistent/node", configurable: true });
+    try {
+      const error = await runInBackground(["--version"]);
+      expect(error?.code).toBe("ENOENT");
+    } finally {
+      Object.defineProperty(process, "execPath", { value: previous, configurable: true });
+    }
+  });
+
+  it("resolves with null once the process has started", async () => {
+    const { runInBackground } = await import("../src/core/background.js");
+    await expect(runInBackground(["--version"])).resolves.toBeNull();
   });
 });

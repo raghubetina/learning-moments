@@ -30,6 +30,7 @@ export const EVENT_CLASSES = Object.freeze({
   answer_received: "ledger",
   skip_recorded: "ledger",
   grade_created: "ledger",
+  grade_started: "ledger",
   classifier_completed: "ledger",
   grader_completed: "ledger",
   feedback_observed: "ledger",
