@@ -28,7 +28,8 @@ import { ClaudeCallError } from "../src/core/claude-call.js";
 import { runClaudeStructured } from "../src/core/claude.js";
 import { loadConfig, writeConfig } from "../src/core/config.js";
 import { runHook } from "../src/core/hook-runner.js";
-import { appendEvent, readEvents } from "../src/core/log.js";
+import { appendEvent, readEvents, readLedger } from "../src/core/log.js";
+import { dueRecalls, recallQuestion } from "../src/core/recall.js";
 import { classifyReply } from "../src/core/reply.js";
 
 let previousCwd;
@@ -1449,5 +1450,141 @@ describe("on-demand questions, overrides, and metrics", () => {
     await injectMoment(root);
     const printed = await captureLog(() => statusCommand());
     expect(printed).toMatch(/Last question: lm_[0-9a-f]{4}, \dm ago \(still open\)/);
+  });
+});
+
+describe("delayed recall", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const asked = (id, daysAgo, extra = {}) => ({
+    id: `lm_event_${id}`,
+    type: "moment_injected",
+    moment_id: id,
+    short_id: `lm_${id.slice(-4)}`,
+    session_id: "earlier-session",
+    question: `Question ${id}?`,
+    files: ["src/app.js"],
+    timestamp: new Date(Date.now() - daysAgo * day).toISOString(),
+    ...extra
+  });
+  const grade = (id, value, label = "correct", daysAgo = 0) => ({
+    id: `lm_event_g_${id}`,
+    type: "grade_created",
+    moment_id: id,
+    grade: value,
+    label,
+    timestamp: new Date(Date.now() - daysAgo * day).toISOString()
+  });
+
+  it("brings a question back a day later, in a later session, within a week of falling due", () => {
+    expect(dueRecalls([asked("lm_moment_a", 2)], "now").map((d) => d.original.moment_id)).toEqual(["lm_moment_a"]);
+    expect(dueRecalls([asked("lm_moment_a", 0.5)], "now")).toEqual([]);
+    expect(dueRecalls([asked("lm_moment_a", 2, { session_id: "now" })], "now")).toEqual([]);
+    expect(dueRecalls([asked("lm_moment_a", 10)], "now")).toEqual([]);
+  });
+
+  it("spaces later recalls further apart, and retries sooner after a weak answer", () => {
+    const original = asked("lm_moment_a", 10);
+    const firstRecall = asked("lm_moment_r1", 3, { recall_of: "lm_moment_a" });
+    expect(dueRecalls([original, firstRecall, grade("lm_moment_r1", 3)], "now")).toEqual([]);
+    const due = dueRecalls([original, firstRecall, grade("lm_moment_r1", 0, "dont_know")], "now");
+    expect(due.map((d) => d.stage)).toEqual([1]);
+  });
+
+  it("stops after three recalls", () => {
+    const events = [
+      asked("lm_moment_a", 60),
+      asked("lm_moment_r1", 50, { recall_of: "lm_moment_a" }),
+      asked("lm_moment_r2", 40, { recall_of: "lm_moment_a" }),
+      asked("lm_moment_r3", 5, { recall_of: "lm_moment_a" }),
+      grade("lm_moment_r3", 0, "likely_incorrect", 5)
+    ];
+    expect(dueRecalls(events, "now")).toEqual([]);
+  });
+
+  it("asks from memory, using the selector's recall prompt when it wrote one", () => {
+    const question = recallQuestion(asked("lm_moment_a", 3, { recall_seed: "What did the retry change protect against?" }));
+    expect(question).toMatch(/^From memory, before looking at the code: 3 days ago, a change touched `src\/app.js`\./);
+    expect(question).toContain("What did the retry change protect against?");
+    expect(recallQuestion(asked("lm_moment_b", 1))).toContain("yesterday");
+  });
+
+  it("asks a due recall at the end of a turn, once per session, and grades it as recall", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, asked("lm_moment_old_abcd", 2, { expected_answer_outline: "It retries on 5xx." }));
+    const stop = (extra = {}) => stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done.", ...extra }));
+
+    const output = await stop();
+    expect(output?.hookSpecificOutput.additionalContext).toContain("From memory, before looking at the code: 2 days ago");
+    await stop({ stop_hook_active: true });
+    await reply(root, "It retries server errors with backoff");
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { grade: 2, label: "partially_correct", feedback: "Mostly.", reason: "Partly.", confidence: 0.7 },
+      metrics: testMetrics
+    });
+    await runBackgroundGrading();
+    expect(vi.mocked(runClaudeStructured).mock.calls.at(-1)[0].prompt).toContain("delayed recall question");
+    const recall = (await readEvents(root)).find((event) => event.type === "moment_injected" && event.recall_of);
+    expect(recall).toMatchObject({ recall_of: "lm_moment_old_abcd", recall_stage: 0, expected_answer_outline: "It retries on 5xx." });
+
+    // The per-session limit (default 1) holds even when another is due.
+    await appendEvent(root, asked("lm_moment_old_efgh", 3));
+    expect(await stop()).toBeNull();
+  });
+
+  it("recalls questions the selector held for later", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { ...eligibleClassification, timing: "ask_later", question: "Held for later?" },
+      metrics: testMetrics
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+    const ledger = await readLedger(root);
+    const created = ledger.find((event) => event.type === "moment_created");
+    expect(created?.timing).toBe("ask_later");
+    const later = new Date(Date.now() + 2 * day);
+    expect(dueRecalls(ledger, "a-later-session", later).map((d) => d.original.question)).toEqual(["Held for later?"]);
+  });
+
+  it("gives Claude the stored change when a recall is answered", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await appendEvent(root, asked("lm_moment_old_abcd", 2, { context_excerpt: "+retry on 503" }));
+    await stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done." }));
+    const output = await reply(root, "It retries server errors");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("delayed recall question");
+    expect(output?.hookSpecificOutput.additionalContext).toContain("+retry on 503");
+  });
+
+  it("does not ask recalls when the per-session limit is 0", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const config = await loadConfig(root);
+    config.frequency.session_start_recall_limit = 0;
+    await writeConfig(root, config);
+    await appendEvent(root, asked("lm_moment_old_abcd", 2));
+    expect(await stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "Done." }))).toBeNull();
+  });
+
+  it("keeps the selector's recall prompt with each question", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({
+      output: { ...eligibleClassification, recall: { schedule: true, prompt_seed: "Why retry?", delay: "next_session" } },
+      metrics: testMetrics
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+    await batchThenStop(hookInput(root));
+    const moment = (await readEvents(root)).find((event) => event.type === "moment_injected");
+    expect(moment).toMatchObject({ recall_seed: "Why retry?", summary: "A change." });
   });
 });

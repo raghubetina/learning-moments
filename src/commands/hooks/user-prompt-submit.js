@@ -149,6 +149,16 @@ export async function userPromptSubmitHook(input) {
         "Question:",
         pending.question,
         "",
+        // A recall is answered in a later session, where Claude may never
+        // have seen the change; the stored redacted excerpt stands in for it.
+        ...(pending.recall_of
+          ? [
+              "This is a delayed recall question about an earlier change, which may no longer be in Claude's context. The change as it looked then (redacted):",
+              pending.context_excerpt ? `\`\`\`diff\n${pending.context_excerpt}\n\`\`\`` : "(no code was stored for it)",
+              "Feedback on a recall answer rewards remembered purpose and risk over exact names.",
+              ""
+            ]
+          : []),
         // The hidden answer outline stays out of the conversation: this
         // message may not be an answer at all, and Claude has the code to
         // judge against. The background grader uses the outline.

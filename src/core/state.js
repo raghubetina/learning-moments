@@ -123,7 +123,8 @@ export function pendingInjectedMoment(events, sessionId, now = new Date()) {
       typeof injected.expected_answer_outline === "string" ? injected.expected_answer_outline : undefined,
     files: Array.isArray(injected.files) ? injected.files.map(String) : [],
     delivery: typeof injected.delivery === "string" ? injected.delivery : undefined,
-    context_excerpt: typeof injected.context_excerpt === "string" ? injected.context_excerpt : undefined
+    context_excerpt: typeof injected.context_excerpt === "string" ? injected.context_excerpt : undefined,
+    recall_of: typeof injected.recall_of === "string" ? injected.recall_of : undefined
   };
 }
 

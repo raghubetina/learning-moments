@@ -51,10 +51,6 @@ The feedback should be one short sentence the coding assistant can pass to the u
 
 Return JSON matching the provided schema.
 `,
-  "select-recall.md": `Select delayed recall prompts for Learning Moments.
-
-Prefer moments with low confidence, low grade, high learning value, or explicit recall scheduling.
-`,
   "verify.md": `The developer asked for this question with /learning-moments:verify, so they are ready for one now.
 
 Prefer asking over staying silent unless the changes are trivial, and keep the question short and specific to the diff.

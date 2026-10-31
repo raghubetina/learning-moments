@@ -270,7 +270,11 @@ export async function postToolBatchHook(input) {
     classifier_reason: classification.reason,
     candidate_fingerprint: fingerprint,
     redaction_findings: diff.findings,
-    context_excerpt: storedContext(config, diff.text)
+    context_excerpt: storedContext(config, diff.text),
+    // Kept for delayed recall; the selector writes them with every answer.
+    recall_seed: classification.recall.prompt_seed,
+    summary: classification.storage.summary,
+    tags: classification.storage.tags
   };
 
   // Phase 2 — re-acquire the lock to decide atomically whether this
@@ -280,6 +284,9 @@ export async function postToolBatchHook(input) {
     await appendEvent(projectRoot, {
       type: "moment_created",
       ...baseEvent,
+      // Durable record of the selector's timing: ask_later questions are
+      // delayed-recall candidates, and moment_silenced is telemetry.
+      timing: classification.timing,
       moment_type: classification.moment_type,
       learning_value: classification.learning_value,
       flow_cost: classification.flow_cost

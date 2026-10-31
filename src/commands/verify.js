@@ -82,7 +82,10 @@ export async function verifyCommand(options = {}) {
     expected_answer_outline: classification.expected_answer_outline,
     classifier_reason: classification.reason,
     redaction_findings: diff.findings,
-    context_excerpt: storedContext(config, diff.text)
+    context_excerpt: storedContext(config, diff.text),
+    recall_seed: classification.recall.prompt_seed,
+    summary: classification.storage.summary,
+    tags: classification.storage.tags
   };
   // Rechecked under the lock: two overlapping verify runs can both pass
   // the early check while their classifiers run.
