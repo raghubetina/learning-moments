@@ -67,15 +67,27 @@ describe("ids", () => {
 
     await fs.writeFile(path.join(root, "tracked.txt"), "two\n");
     git(["add", "tracked.txt"], root);
-    expect(contextForFiles(root, ["tracked.txt"], 4000)).toContain("+two");
+    expect(contextForFiles(root, ["tracked.txt"], 4000).text).toContain("+two");
 
     await fs.writeFile(path.join(root, "new-only.txt"), "brand new\n");
-    expect(contextForFiles(root, ["new-only.txt"], 4000)).toContain("brand new");
+    expect(contextForFiles(root, ["new-only.txt"], 4000).text).toContain("brand new");
 
     await fs.writeFile(path.join(root, "new-mixed.txt"), "also brand new\n");
-    const mixed = contextForFiles(root, ["tracked.txt", "new-mixed.txt"], 4000);
+    const mixed = contextForFiles(root, ["tracked.txt", "new-mixed.txt"], 4000).text;
     expect(mixed).toContain("+two");
     expect(mixed).toContain("also brand new");
+  });
+
+  it("builds context in a repository with no commits yet", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "staged.js"), "export const staged = 1;\n");
+    git(["add", "staged.js"], root);
+    await fs.writeFile(path.join(root, "untracked.js"), "export const loose = 2;\n");
+
+    const context = contextForFiles(root, ["staged.js", "untracked.js"], 4000).text;
+    expect(context).toContain("+export const staged = 1;");
+    expect(context).toContain("export const loose = 2;");
   });
 });
 
@@ -93,7 +105,53 @@ describe("context safety", () => {
     await fs.symlink(target, path.join(root, "linked.txt"));
 
     expect(gitHashObjects(root, ["linked.txt"])).toEqual({ "linked.txt": null });
-    expect(contextForFiles(root, ["linked.txt"], 4000)).not.toContain(secret);
+    expect(contextForFiles(root, ["linked.txt"], 4000).text).not.toContain(secret);
+  });
+
+  it("treats candidate filenames as literal paths, not pathspec patterns", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "*"), "star\n");
+    await fs.writeFile(path.join(root, "private-data.txt"), "before\n");
+    git(["add", "*", "private-data.txt"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.writeFile(path.join(root, "*"), "star changed\n");
+    await fs.writeFile(path.join(root, "private-data.txt"), "excluded-canary\n");
+
+    const context = contextForFiles(root, ["*"], 4000).text;
+    expect(context).toContain("+star changed");
+    expect(context).not.toContain("excluded-canary");
+  });
+
+  it("keeps working when the environment enables another pathspec mode", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "app.js"), "one\n");
+    git(["add", "app.js"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.writeFile(path.join(root, "app.js"), "two\n");
+    process.env.GIT_ICASE_PATHSPECS = "1";
+    try {
+      expect(contextForFiles(root, ["app.js"], 4000).text).toContain("+two");
+    } finally {
+      delete process.env.GIT_ICASE_PATHSPECS;
+    }
+  });
+
+  it("redacts a private key before the context budget can truncate it", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "README.md"), "test\n");
+    git(["add", "README.md"], root);
+    git(["commit", "-m", "initial"], root);
+    const body = "MIIEsecretkeymaterial".repeat(40);
+    const key = `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+    await fs.writeFile(path.join(root, "fixture.txt"), key);
+
+    // The budget ends inside the key body, before its END marker.
+    const context = contextForFiles(root, ["fixture.txt"], 300);
+    expect(context.text).not.toContain("MIIEsecretkeymaterial");
+    expect(context.findings.map((finding) => finding.type)).toContain("PEM_PRIVATE_KEY");
   });
 });
 
@@ -414,6 +472,30 @@ describe("event registry", () => {
 });
 
 describe("redaction", () => {
+  it("redacts a private key whose END marker is missing", () => {
+    const result = redactSecrets("+-----BEGIN RSA PRIVATE KEY-----\n+MIIEowIBAAKCAQEAsecret");
+    expect(result.text).not.toContain("MIIEowIBAAKCAQEAsecret");
+    expect(result.findings[0]?.type).toBe("PEM_PRIVATE_KEY");
+  });
+
+  it("redacts npm, project-scoped OpenAI, and connection-string credentials", () => {
+    const text = [
+      `//registry.npmjs.org/:_authToken=npm_${"a".repeat(36)}`,
+      "//registry.example.com/:_authToken=abcdef123456",
+      `OPENAI_KEY_VALUE sk-proj-${"Ab_cD-".repeat(8)}`,
+      "postgres://app:s3cretpass@db.internal:5432/app"
+    ].join("\n");
+    const result = redactSecrets(text);
+    expect(result.text).not.toMatch(/npm_a{36}|abcdef123456|sk-proj-|s3cretpass/);
+    expect(result.text).toContain("postgres://app:[REDACTED_URL_CREDENTIALS");
+    expect(result.text).not.toMatch(/\[REDACTED_[A-Z_]+ hash=[0-9a-f]+ len=\d+\] hash=/);
+  });
+
+  it("leaves ordinary code that mentions tokens alone", () => {
+    const text = "const token = getToken(); // login flow";
+    expect(redactSecrets(text).text).toBe(text);
+  });
+
   it("redacts common secrets with typed placeholders", () => {
     const result = redactSecrets("ANTHROPIC_API_KEY=sk-ant-abc1234567890abcdefghi");
     expect(result.text).toContain("[REDACTED_ANTHROPIC_KEY");

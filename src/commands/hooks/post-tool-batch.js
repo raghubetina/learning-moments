@@ -1,12 +1,12 @@
 import { immediatePromptBudgetAvailable, classifierBudgetAvailable } from "../../core/budget.js";
 import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
+import { candidateFiles } from "../../core/filter.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
 import { changedSinceBaseline, contextForFiles, findGitRoot, workspaceContext } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
-import { redactSecrets } from "../../core/redaction.js";
 import { latestSessionBaseline } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
 
@@ -89,7 +89,13 @@ export async function postToolBatchHook(input) {
     return null;
   }
   const current = ctx.toBaseline();
-  const files = changedSinceBaseline(baseline, current).slice(0, config.context_limits.max_paths);
+  // Filter again after the comparison: a baseline saved by an older
+  // version, or under an older config, can list paths that are excluded
+  // now, and their absence from the current snapshot reads as a change.
+  const files = candidateFiles(changedSinceBaseline(baseline, current), config).slice(
+    0,
+    config.context_limits.max_paths
+  );
   if (files.length === 0) {
     await complete("no_candidate");
     return null;
@@ -101,7 +107,7 @@ export async function postToolBatchHook(input) {
   // call (default 45s timeout vs. 5s lock acquisition timeout); a slow
   // model call shouldn't make a second hook fail-open just because one
   // request is in flight.
-  const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+  const diff = contextForFiles(projectRoot, files, config.context_limits.max_diff_chars);
   const fingerprint = candidateFingerprint(files, diff.text);
 
   const claim = await withProjectLock(projectRoot, "moment-claim", async () => {

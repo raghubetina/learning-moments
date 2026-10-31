@@ -7,13 +7,20 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 ### Fixed
 
 - Nested `claude -p` calls could load and call the developer's MCP tools. `--tools ""` only removes built-in tools, so a permitted MCP tool's result could enter the selector or grader request without redaction. Nested calls now pass `--strict-mcp-config` and `--disallowedTools "mcp__*"`.
+- Default secret-path exclusions matched only at the repository root, so files such as `apps/api/.env`, `apps/api/.npmrc`, or `deploy/.ssh/id_rsa` could reach the selector. Credential files, lockfiles, and `.learning-moments/` are now excluded at any depth by a built-in list that applies regardless of `config.json`, so upgraded installations are covered without editing their config.
+- `package-lock.json`, `pnpm-lock.yaml`, and other lockfiles without a `.lock` extension were not excluded, although the README said lockfiles were. Their churn could crowd code out of the context budget.
+- A repository that had stopped ignoring `.learning-moments/` sent the tool's own logs, including earlier hidden answer outlines, to the selector as changed files.
+- Context was truncated before it was redacted, so a private key cut off before its END marker was sent unredacted. Each file's context is now redacted whole before the budget truncates it, and a key with no END marker is redacted to the end of the excerpt.
+- Filenames were passed to `git diff` as pathspecs, so a file literally named `*` widened the diff to excluded files. Git now treats every filename literally, and external diff and textconv programs are disabled while building context.
+- Context collection failed in a repository with no commits yet. It now diffs against Git's empty tree until the first commit.
+- Redaction now also covers npm tokens and `.npmrc` auth entries, project-scoped OpenAI keys, Slack and GitLab tokens, Google API keys, and passwords in connection-string URLs.
 
 ### Changed
 
+- New configs ignore `dist/`, `coverage/`, and `node_modules/` at any depth; the secret-path entries moved into the built-in list.
 - Nested calls no longer load CLAUDE.md files or auto memory, and they send the selector or grader policy as the system prompt instead of the default Claude Code prompt. Together with the MCP fix, fixed per-call overhead fell from about 20,000 input tokens to about 1,000 in local measurement.
 - Nested calls now set an explicit effort level (`claude.classifier_effort` and `claude.grading_effort`, default `low`) instead of inheriting the developer's `effortLevel`. In local testing on three real diffs, `low` classified in 13–15 seconds against 23–28 seconds at `xhigh`, with comparable questions.
 - `classifier_failed_open` and `grader_failed_open` events now record a failure category (`timeout`, `rate_limited`, `auth`, `invalid_output`, and others) and the call's metrics, including usage from a result envelope printed before a nonzero exit. `metrics` counts that cost and time and groups failures by reason.
-
 - Raised the minimum Node.js version from 20 to 22. Node 20 reached end of life on 2026-04-30, and current Vitest requires Node 22.12 or newer. The runtime code is unchanged.
 - CI now runs on Node 22, 24, and 26. The publish workflow now fails on high-severity npm advisories in the development toolchain.
 - Updated TypeScript to 7, Vitest to 5, and Node type definitions to the Node 22 line. Dependabot no longer proposes major `@types/node` updates ahead of the runtime floor.

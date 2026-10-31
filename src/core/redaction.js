@@ -19,12 +19,47 @@ const rules = [
     pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g
   },
   {
+    // A key whose END marker is missing, for example because the key is
+    // larger than the excerpt. Everything after BEGIN is treated as key.
+    type: "PEM_PRIVATE_KEY",
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*$/g
+  },
+  {
     type: "ANTHROPIC_KEY",
     pattern: /sk-ant-[A-Za-z0-9_-]{20,}/g
   },
   {
     type: "OPENAI_KEY",
+    pattern: /sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}/g
+  },
+  {
+    type: "OPENAI_KEY",
     pattern: /sk-[A-Za-z0-9]{32,}/g
+  },
+  {
+    type: "NPM_TOKEN",
+    pattern: /npm_[A-Za-z0-9]{36}/g
+  },
+  {
+    type: "NPMRC_AUTH",
+    pattern: /_(?:authToken|auth|password)\s*=\s*(?!\[REDACTED_)[^\s'"]{6,}/g
+  },
+  {
+    type: "SLACK_TOKEN",
+    pattern: /xox[abposr]-[A-Za-z0-9-]{10,}/g
+  },
+  {
+    type: "GOOGLE_API_KEY",
+    pattern: /AIza[0-9A-Za-z_-]{35}/g
+  },
+  {
+    type: "GITLAB_TOKEN",
+    pattern: /glpat-[A-Za-z0-9_-]{20,}/g
+  },
+  {
+    // user:password@ in connection strings such as DATABASE_URL.
+    type: "URL_CREDENTIALS",
+    pattern: /(?<=:\/\/[^\s:@/]+:)(?!\[REDACTED_)[^\s@/]{6,}(?=@)/g
   },
   {
     type: "GITHUB_TOKEN",

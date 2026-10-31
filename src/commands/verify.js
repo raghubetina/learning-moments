@@ -4,7 +4,6 @@ import { candidateFiles } from "../core/filter.js";
 import { contextForFiles, dirtyFiles, findGitRoot } from "../core/git.js";
 import { createId, shortId } from "../core/ids.js";
 import { appendEvent } from "../core/log.js";
-import { redactSecrets } from "../core/redaction.js";
 
 export async function verifyCommand() {
   const projectRoot = findGitRoot(process.cwd());
@@ -15,7 +14,7 @@ export async function verifyCommand() {
     return;
   }
 
-  const diff = redactSecrets(contextForFiles(projectRoot, files, config.context_limits.max_diff_chars));
+  const diff = contextForFiles(projectRoot, files, config.context_limits.max_diff_chars);
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
   if (result && !result.ok) {
     console.log(`Could not select a question (${result.reason}).`);
