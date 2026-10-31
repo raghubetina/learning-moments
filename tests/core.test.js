@@ -168,6 +168,53 @@ describe("context safety", () => {
     expect(context).toContain("+three");
   });
 
+  it("does not read through a directory replaced by a symlink", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.mkdir(path.join(root, "sub"));
+    await fs.writeFile(path.join(root, "sub", "file.js"), "export const inside = 1;\n");
+    git(["add", "sub/file.js"], root);
+    git(["commit", "-m", "initial"], root);
+    const outside = await tempDir();
+    await fs.writeFile(path.join(outside, "file.js"), "export const outsideFile = 2;\n");
+    await fs.rm(path.join(root, "sub"), { recursive: true });
+    await fs.symlink(outside, path.join(root, "sub"));
+
+    expect(gitHashObjects(root, ["sub/file.js"])).toEqual({ "sub/file.js": "nonfile:symlinked-parent" });
+    expect(contextForFiles(root, ["sub/file.js"], 4000).text).not.toContain("outsideFile");
+  });
+
+  it("does not read through a directory symlinked to an excluded directory in the repository", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.mkdir(path.join(root, "guide"));
+    await fs.writeFile(path.join(root, "guide", "config"), "plain\n");
+    git(["add", "guide/config"], root);
+    git(["commit", "-m", "initial"], root);
+    await fs.mkdir(path.join(root, ".ssh"));
+    await fs.writeFile(path.join(root, ".ssh", "config"), "IdentityFile secret-key-path\n");
+    await fs.rm(path.join(root, "guide"), { recursive: true });
+    await fs.symlink(path.join(root, ".ssh"), path.join(root, "guide"));
+
+    expect(contextForFiles(root, ["guide/config"], 4000).text).not.toContain("secret-key-path");
+  });
+
+  it("hashes a filename that looks C-quoted as the literal file", async () => {
+    const root = await tempDir();
+    git(["init", "-b", "main"], root);
+    await fs.writeFile(path.join(root, "README.md"), "test\n");
+    git(["add", "README.md"], root);
+    git(["commit", "-m", "initial"], root);
+    const outside = path.join(path.dirname(root), `outside-${path.basename(root)}.txt`);
+    await fs.writeFile(outside, "outside-marker\n");
+    const quoted = `"..\\057${path.basename(outside)}"`;
+    await fs.writeFile(path.join(root, quoted), "literal-content\n");
+
+    const context = contextForFiles(root, [quoted], 4000).text;
+    expect(context).toContain("literal-content");
+    expect(context).not.toContain("outside-marker");
+  });
+
   it("shows a change to only the executable bit", async () => {
     const root = await tempDir();
     git(["init", "-b", "main"], root);

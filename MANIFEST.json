@@ -1,11 +1,11 @@
 {
   "name": "learning-moments",
   "version": "0.5.5",
-  "generatedAt": "2026-10-31T20:57:25.016Z",
+  "generatedAt": "2026-10-31T21:26:16.675Z",
   "files": {
     ".claude-plugin/plugin.json": "0d288668a9a0d9774761af92a2b08197126de77e8e6b1aac1a77b5461e75e84e",
     "AUDIT.md": "8fd78e0292b1b33ea152ec82651a43fff94e5a1e61687a046b74d9f48abf2d51",
-    "CHANGELOG.md": "310bf38f0f3ba03c7c6ff5d5e5c9a8a2bfd27dcb776fad3254c3569798d2d937",
+    "CHANGELOG.md": "246ccaf9ad6548b3856e5bcd45a4d604563700612d24f17e6dbb3dca9a625167",
     "LICENSE.md": "ac2acadf5302b636398bb2a23249792849e84d6de989bdcd3c731d9930d1e3a1",
     "README.md": "b28c52fa7bbe3852d4cc553ba2ee393d4beaa5562e3a40cc524b7ff7333538a4",
     "SECURITY.md": "a41cccf7f487e4d60f5f4e128dc3d742fe7499789169ee7a39c4ec46caa87502",
@@ -50,7 +50,7 @@
     "src/core/file-utils.js": "78599c8ca19bf40b47a852436ead4192fd126c9f6270eea5fdabe5bba84a0c8a",
     "src/core/filter.js": "590bb4f9daf159260b45eac9d247e91daa60b42f634eec8bb5601cb9dbee270a",
     "src/core/fingerprint.js": "4e69d94ef5e7addde0b155324bf62bc4b8e2cd31ac4742b0167b50599df29b19",
-    "src/core/git.js": "1d41fd6acf6f0249ff5aca7c90478cb6e5923b475843d27daf66ace64363b954",
+    "src/core/git.js": "879d2171697d6119a322a6c34a527462d9fe96b2744e155b6646fef6247c7fd6",
     "src/core/grader.js": "a812e97bd79e378b037d26cccf0571b38cbb08204a246e98dcc51ab276d3be52",
     "src/core/hook-input.js": "592dd11e9cd35232eceea64419bc45b8dffc524ce7a1e33bcd7128ced9c96dcb",
     "src/core/hook-runner.js": "2b0547af2e0ec4b0294698a5b0c2f05d66346eda698ee59f9a6d6df518ac4349",
