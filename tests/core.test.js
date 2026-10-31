@@ -778,12 +778,19 @@ describe("locks", () => {
 
   it("acquires and releases a lock end-to-end", async () => {
     const root = await tempDir();
+    await fs.mkdir(dataDir(root));
     let ran = false;
     await withProjectLock(root, "regression", async () => {
       ran = true;
     });
     expect(ran).toBe(true);
     await expect(fs.stat(path.join(locksDir(root), "regression.lock"))).rejects.toThrow();
+  });
+
+  it("does not create the data directory of an uninitialized project", async () => {
+    const root = await tempDir();
+    await expect(withProjectLock(root, "regression", async () => undefined)).rejects.toThrow(/ENOENT/);
+    await expect(fs.access(dataDir(root))).rejects.toThrow();
   });
 
   it("reclaims a lock whose recorded PID is no longer alive", async () => {

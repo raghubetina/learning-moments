@@ -1,5 +1,5 @@
-import { findGitRoot } from "../../core/git.js";
 import { appendEvent } from "../../core/log.js";
+import { resolveProject } from "../../core/project.js";
 import { parseCommonHookInput } from "../../core/hook-input.js";
 
 export async function userPromptExpansionHook(input) {
@@ -8,7 +8,9 @@ export async function userPromptExpansionHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parseCommonHookInput(input);
-  const projectRoot = findGitRoot(parsed.cwd);
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return;
+  const projectRoot = project.dataRoot;
   await appendEvent(projectRoot, {
     type: "slash_command_observed",
     session_id: parsed.session_id,

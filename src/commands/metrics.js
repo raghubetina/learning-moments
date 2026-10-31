@@ -1,4 +1,4 @@
-import { findGitRoot } from "../core/git.js";
+import { requireProject } from "../core/project.js";
 import { readEvents } from "../core/log.js";
 
 function sinceMs(value = "24h") {
@@ -89,7 +89,7 @@ function reasons(counts) {
 }
 
 export async function metricsCommand(options) {
-  const projectRoot = findGitRoot(process.cwd());
+  const { dataRoot: projectRoot } = await requireProject();
   const windowMs = sinceMs(options.since);
   const cutoff = Date.now() - windowMs;
   const events = (await readEvents(projectRoot)).filter((event) => {

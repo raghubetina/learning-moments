@@ -1,6 +1,6 @@
 // @ts-check
-import { findGitRoot } from "./git.js";
 import { appendEvent } from "./log.js";
+import { resolveProject } from "./project.js";
 
 // Wraps a hook action with fail-open semantics: hook errors must never break
 // the user's Claude Code workflow. To avoid silent failure (which leaves
@@ -30,8 +30,9 @@ export async function runHook(eventName, action) {
       if (stack) process.stderr.write(`${stack}\n`);
     }
     try {
-      const projectRoot = findGitRoot(process.cwd());
-      await appendEvent(projectRoot, {
+      const project = await resolveProject(process.cwd());
+      if (!project) return;
+      await appendEvent(project.dataRoot, {
         type: "hook_error",
         hook_event_name: eventName,
         cwd: process.cwd(),

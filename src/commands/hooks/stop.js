@@ -1,4 +1,4 @@
-import { findGitRoot } from "../../core/git.js";
+import { resolveProject } from "../../core/project.js";
 import { parseStopHookInput } from "../../core/hook-input.js";
 import { appendEvent, readLedger } from "../../core/log.js";
 import { pendingFeedbackMoment, pendingInjectedMoment } from "../../core/state.js";
@@ -9,7 +9,9 @@ export async function stopHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parseStopHookInput(input);
-  const projectRoot = findGitRoot(parsed.cwd);
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return;
+  const projectRoot = project.dataRoot;
   const events = await readLedger(projectRoot);
   const feedback = pendingFeedbackMoment(events, parsed.session_id);
   if (feedback) {

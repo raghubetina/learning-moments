@@ -1,9 +1,9 @@
+import { requireProject } from "../core/project.js";
 import { loadConfig } from "../core/config.js";
-import { findGitRoot } from "../core/git.js";
 import { readEvents } from "../core/log.js";
 
 export async function statusCommand() {
-  const projectRoot = findGitRoot(process.cwd());
+  const { dataRoot: projectRoot } = await requireProject();
   const config = await loadConfig(projectRoot);
   const events = await readEvents(projectRoot);
   const answered = events.filter((event) => event.type === "answer_received").length;

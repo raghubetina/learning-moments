@@ -1,20 +1,21 @@
 import { classifyCandidate } from "../core/classifier.js";
 import { loadConfig } from "../core/config.js";
 import { candidateFiles } from "../core/filter.js";
-import { contextForFiles, dirtyFiles, findGitRoot } from "../core/git.js";
+import { contextForFiles, dirtyFiles } from "../core/git.js";
 import { createId, shortId } from "../core/ids.js";
 import { appendEvent } from "../core/log.js";
+import { requireProject } from "../core/project.js";
 
 export async function verifyCommand() {
-  const projectRoot = findGitRoot(process.cwd());
+  const { dataRoot: projectRoot, workRoot } = await requireProject();
   const config = await loadConfig(projectRoot);
-  const files = candidateFiles(dirtyFiles(projectRoot), config).slice(0, config.context_limits.max_paths);
+  const files = candidateFiles(dirtyFiles(workRoot), config).slice(0, config.context_limits.max_paths);
   if (files.length === 0) {
     console.log("No meaningful uncommitted project changes found.");
     return;
   }
 
-  const diff = contextForFiles(projectRoot, files, config.context_limits.max_diff_chars);
+  const diff = contextForFiles(workRoot, files, config.context_limits.max_diff_chars);
   const result = await classifyCandidate(projectRoot, config, { files, diff: diff.text });
   if (result && !result.ok) {
     console.log(`Could not select a question (${result.reason}).`);

@@ -7,8 +7,10 @@ import { settingsPath } from "../core/claude-settings.js";
 import { loadConfig } from "../core/config.js";
 import { pathExists } from "../core/file-utils.js";
 import { findGitRoot } from "../core/git.js";
-import { dataDir, noHooksSettingsPath, profilePath, promptsDir } from "../core/paths.js";
+import { scanJsonlFile } from "../core/log.js";
+import { controlPath, dataDir, ledgerPath, noHooksSettingsPath, profilePath, promptsDir, telemetryPath } from "../core/paths.js";
 import { cliPath } from "../core/path-self.js";
+import { resolveProject } from "../core/project.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -46,6 +48,12 @@ export async function doctorCommand() {
   try {
     projectRoot = findGitRoot(process.cwd());
     checks.push({ name: "Git repo", ok: true, detail: projectRoot });
+    // In a linked worktree, the data lives in the checkout where init ran.
+    const project = await resolveProject(process.cwd());
+    if (project && project.dataRoot !== projectRoot) {
+      projectRoot = project.dataRoot;
+      checks.push({ name: "Learning Moments project (informational)", ok: true, detail: projectRoot });
+    }
   } catch (error) {
     checks.push({
       name: "Git repo",
@@ -85,6 +93,21 @@ export async function doctorCommand() {
     name: "Can write local data directory",
     ok: await writableDirectory(dataDir(projectRoot))
   });
+  for (const [label, file] of [
+    ["ledger", ledgerPath(projectRoot)],
+    ["control", controlPath(projectRoot)],
+    ["telemetry", telemetryPath(projectRoot)]
+  ]) {
+    const { malformed } = await scanJsonlFile(file, label);
+    if (malformed.length > 0) {
+      const lines = malformed.map((entry) => entry.line).join(", ");
+      checks.push({
+        name: `Readable ${label} log`,
+        ok: false,
+        detail: `${malformed.length} unreadable line(s) set aside in ${file} (line ${lines})`
+      });
+    }
+  }
 
   for (const check of checks) {
     const optional = check.name.includes("informational");

@@ -1,9 +1,9 @@
+import { requireProject } from "../core/project.js";
 import { loadConfig, writeConfig } from "../core/config.js";
-import { findGitRoot } from "../core/git.js";
 import { appendEvent } from "../core/log.js";
 
 export async function pauseCommand(options) {
-  const projectRoot = findGitRoot(process.cwd());
+  const { dataRoot: projectRoot } = await requireProject();
   const config = await loadConfig(projectRoot);
   if (options.session && !options.project) {
     config.paused.sessions[options.session] = true;

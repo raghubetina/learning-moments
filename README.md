@@ -162,7 +162,7 @@ Capture the next answer or "skip" ---> grade ---> brief feedback
 
 The lifecycle is implemented with six Claude Code hooks:
 
-1. `SessionStart` records the current branch, commit, dirty paths, and content fingerprints.
+1. `SessionStart` records the current branch, commit, dirty paths, and content fingerprints once per session; resuming, compacting, or clearing keeps that baseline.
 2. `PostToolUse` records lightweight edit telemetry.
 3. `PostToolBatch` finds files that changed since the session baseline and selects a candidate moment.
 4. `UserPromptSubmit` captures and grades the answer to a pending question.
@@ -170,6 +170,8 @@ The lifecycle is implemented with six Claude Code hooks:
 6. `UserPromptExpansion` records slash-command hook activity.
 
 Change attribution is session-relative. Learning Moments can tell that a file changed after the baseline; it cannot prove that every byte came from Claude rather than an external editor used during the same session.
+
+The hooks act only in a project where `learning-moments init` ran, and never create `.learning-moments/` anywhere else, even when Claude runs `cd` into another repository. In a linked worktree of an initialized project, such as a Claude Code worktree session, Learning Moments reads changes from the worktree and keeps its records in the main checkout. Tool calls made inside subagents are not asked about directly; their edits are picked up when the main conversation's tool batch ends.
 
 ### Question types
 

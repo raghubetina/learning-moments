@@ -64,7 +64,15 @@ async function reclaimIfStale(lockPath, now = Date.now()) {
 export async function withProjectLock(projectRoot, lockName, fn, timeoutMs = 5000) {
   const lockRoot = locksDir(projectRoot);
   const lockPath = path.join(lockRoot, `${lockName}.lock`);
-  await fs.mkdir(lockRoot, { recursive: true });
+  // Not recursive: only `init` creates `.learning-moments/`, so a missing
+  // data directory fails here instead of appearing in an uninitialized
+  // repository.
+  try {
+    await fs.mkdir(lockRoot);
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : undefined;
+    if (code !== "EEXIST") throw error;
+  }
 
   const deadline = Date.now() + timeoutMs;
   let attempts = 0;

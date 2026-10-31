@@ -13,6 +13,12 @@ All notable changes to Learning Moments are recorded here. The format follows [K
 - Context was truncated before it was redacted, so a private key cut off before its END marker was sent unredacted. Each file's context is now redacted whole before the budget truncates it, and a key with no END marker is redacted to the end of the excerpt.
 - Filenames were passed to `git diff` as pathspecs, so a file literally named `*` widened the diff to excluded files. Git now treats every filename literally, and external diff and textconv programs are disabled while building context.
 - Context collection failed in a repository with no commits yet. It now diffs against Git's empty tree until the first commit.
+- Hooks created an untracked `.learning-moments/` directory in any Git repository the session's working directory entered, such as a clone Claude ran `cd` into, even where `init` never ran. Hooks now act only in an initialized project, prefer `CLAUDE_PROJECT_DIR` over the hook's `cwd`, and never create the data directory themselves.
+- Hooks failed in Claude Code worktree sessions, where settings come from the main checkout but files change in the worktree. Learning Moments now reads changes from the worktree and records them in the main checkout's `.learning-moments/`.
+- A tool batch inside a subagent could spend the hourly question on context only that subagent saw. Hooks now ignore tool calls that carry an `agent_id`.
+- `SessionStart` on resume, compaction, or `/clear` replaced the session baseline, so changes Claude made before that point could never be asked about. An existing baseline is now kept.
+- One malformed line in a JSONL log, such as the tail of an interrupted append, made every hook that read that file fail. Readers now set damaged lines aside, `doctor` reports them, and the next record always starts on a new line.
+- Commands run outside an initialized project now say so instead of failing on a missing `config.json`.
 - Redaction now also covers npm tokens and `.npmrc` auth entries, project-scoped OpenAI keys, Slack and GitLab tokens, Google API keys, and passwords in connection-string URLs.
 
 ### Changed

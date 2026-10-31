@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/**/*.test.{ts,js}"],
+    setupFiles: ["tests/setup.js"],
     restoreMocks: true,
     // Hook tests run real git operations against tempdirs and can hit the
     // default 5s timeout under heavy file-system contention when vitest is

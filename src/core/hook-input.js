@@ -11,6 +11,7 @@ import { assertArray, assertObject, assertString, optional } from "./validate.js
  * @property {string} hook_event_name
  * @property {string} [transcript_path]
  * @property {string} [permission_mode]
+ * @property {string} [agent_id] present when the hook fires inside a subagent or teammate
  *
  * @typedef {CommonHookInput & {tool_name: string, tool_use_id?: string, tool_input?: unknown}} ToolHookInput
  * @typedef {CommonHookInput & {prompt: string}} UserPromptSubmitInput
@@ -30,6 +31,7 @@ export function parseCommonHookInput(raw, loc = "input") {
   assertString(obj.hook_event_name, `${loc}.hook_event_name`);
   optional(obj.transcript_path, assertString, `${loc}.transcript_path`);
   optional(obj.permission_mode, assertString, `${loc}.permission_mode`);
+  optional(obj.agent_id, assertString, `${loc}.agent_id`);
   return /** @type {CommonHookInput & Record<string, unknown>} */ (obj);
 }
 
