@@ -199,6 +199,7 @@ export async function metricsCommand(options) {
     },
     user: {
       moments_injected: asked,
+      recalls_asked: ofType("moment_injected").filter((event) => typeof event.recall_of === "string").length,
       answered: answers.filter((event) => event.answer_kind !== "dont_know").length,
       dont_know: answers.filter((event) => event.answer_kind === "dont_know").length,
       skipped: ofType("skip_recorded").length,
@@ -225,7 +226,7 @@ export async function metricsCommand(options) {
   console.log(`Learning Moments metrics (${summary.since})`);
   console.log("");
   console.log("Questions:");
-  console.log(`  asked: ${asked}`);
+  console.log(`  asked: ${asked}${u.recalls_asked > 0 ? ` (${u.recalls_asked} delayed recall)` : ""}`);
   console.log(`  answered: ${u.answered}${rate(u.answered)}`);
   console.log(`  "don't know": ${u.dont_know}${rate(u.dont_know)}`);
   console.log(`  skipped: ${u.skipped}${rate(u.skipped)}${reasons(u.skipped_by_kind)}`);

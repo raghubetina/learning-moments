@@ -267,7 +267,8 @@ export const defaultConfig = {
   frequency: {
     immediate_prompts_per_hour: 1,
     minimum_minutes_between_immediate_prompts: 20,
-    session_start_recall_limit: 2,
+    // Delayed recall questions per session; 0 turns recall off.
+    session_start_recall_limit: 1,
     classifier_calls_per_hour: 10
   },
   mode: "active",

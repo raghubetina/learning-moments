@@ -41,7 +41,8 @@ export async function gradeCommand(momentId, options) {
     expectedAnswerOutline: typeof moment.expected_answer_outline === "string" ? moment.expected_answer_outline : undefined,
     answer: answer.answer_text,
     files: Array.isArray(moment.files) ? moment.files.map(String) : [],
-    excerpt: typeof moment.context_excerpt === "string" ? moment.context_excerpt : undefined
+    excerpt: typeof moment.context_excerpt === "string" ? moment.context_excerpt : undefined,
+    recall: typeof moment.recall_of === "string"
   });
   if (!result.ok) {
     await appendEvent(projectRoot, {

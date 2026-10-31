@@ -43,6 +43,7 @@ Implemented today:
 - Git-based detection of changes made during the current Claude Code session;
 - situated **Predict** and **Test** questions, selected in the background with `claude -p` and asked when Claude finishes its turn;
 - answer capture, skipping, structured 0-3 grading, and brief feedback;
+- delayed recall: earlier questions come back in later sessions, spaced 1, 7, then 30 days apart;
 - configurable question and classifier budgets;
 - local timing, usage, cost, and outcome metrics;
 - project/session pause controls and observe-only mode;
@@ -51,7 +52,6 @@ Implemented today:
 
 Not implemented yet:
 
-- delayed recall across sessions ([issue #15](https://github.com/raghubetina/learning-moments/issues/15));
 - confidence prompts or polished research exports; and
 - support for coding agents other than Claude Code.
 
@@ -187,7 +187,11 @@ The hooks act only in a project where `learning-moments init` ran, and never cre
 
 - `Predict` asks what behavior changed or what might break.
 - `Test` asks for a concrete check that would expose a misunderstanding.
-- `Recall` would ask for the rationale behind an earlier change. It is part of the design vocabulary but is not implemented yet.
+- `Recall` asks, in a later session, about an earlier question's change, to be answered from memory before looking at the code.
+
+### Delayed recall
+
+A question you were asked comes back in a later session, a day after it was asked, then 7 days after that recall, then 30. A weak answer or "I don't know" brings it back after a day instead, up to three recalls per question. Recalls use the recall prompt the selector writes with each question, are asked at the end of a turn only when no new question is waiting, share the hourly question budget, and are limited per session by `frequency.session_start_recall_limit` (default 1; set it to `0` to turn recall off). A recall nobody gets to within a week of falling due is dropped. The grader is told an answer is a recall, so it rewards remembered purpose and risk rather than exact names.
 
 The selector also writes an expected-answer outline. Only the background grader sees it; it enters the conversation only if you say you don't know, as the explanation.
 
@@ -233,8 +237,6 @@ Learning Moments separates stable integration code from editable pedagogical pol
 |-- prompts/
 |   |-- classify-change.md
 |   |-- grade-answer.md
-|   |-- answer-feedback.md
-|   |-- select-recall.md
 |   `-- verify.md
 |-- ledger.jsonl
 |-- control.jsonl
@@ -400,7 +402,7 @@ Release verification additionally checks npm advisories, the shipped-file manife
 
 ## Roadmap
 
-The next product step is [delayed recall for prior Learning Moments](https://github.com/raghubetina/learning-moments/issues/15).
+Next: an optional Claude Code pane that shows the question with an answer field ([experimental](#experimental-question-pane)), and comparison designs (some eligible changes asked, others only recalled later) to study retention.
 
 Bug reports and small, well-tested improvements are welcome. For research use, the repository includes [citation metadata](CITATION.cff).
 

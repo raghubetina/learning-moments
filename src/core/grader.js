@@ -63,6 +63,14 @@ async function readTextOrDefault(filePath, fallback) {
 
 function buildGradePrompt(input) {
   return [
+    ...(input.recall
+      ? [
+          "This is a delayed recall question, asked days after the change. Reward remembered purpose, risk,",
+          "and verification logic; do not require exact file names, identifiers, or line numbers unless the",
+          "question is about them.",
+          ""
+        ]
+      : []),
     "Question:",
     input.question,
     "",
