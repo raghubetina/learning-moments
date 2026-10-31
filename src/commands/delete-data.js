@@ -1,5 +1,6 @@
-import fs from "node:fs/promises";
 import { findGitRoot } from "../core/git.js";
+import { resolveProject } from "../core/project.js";
+import fs from "node:fs/promises";
 import { withProjectLock } from "../core/lock.js";
 import { dataDir, migrationCompletePath, telemetryPath } from "../core/paths.js";
 
@@ -35,7 +36,9 @@ async function truncateTelemetry(projectRoot) {
  * @param {{ logsOnly?: boolean }} [options]
  */
 export async function deleteDataCommand(options = {}) {
-  const projectRoot = findGitRoot(process.cwd());
+  // Deletion must also work for an install whose config is missing or
+  // broken, so fall back to the current repository.
+  const projectRoot = (await resolveProject(process.cwd()))?.dataRoot ?? findGitRoot(process.cwd());
   if (options.logsOnly) {
     await truncateTelemetry(projectRoot);
     return;

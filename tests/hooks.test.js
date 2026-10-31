@@ -10,6 +10,7 @@ vi.mock("../src/core/claude.js", () => ({
 
 import { initCommand } from "../src/commands/init.js";
 import { postToolBatchHook } from "../src/commands/hooks/post-tool-batch.js";
+import { postToolUseHook } from "../src/commands/hooks/post-tool-use.js";
 import { sessionStartHook } from "../src/commands/hooks/session-start.js";
 import { stopHook } from "../src/commands/hooks/stop.js";
 import { userPromptSubmitHook } from "../src/commands/hooks/user-prompt-submit.js";
@@ -45,13 +46,166 @@ async function tempGitRepo() {
   return root;
 }
 
+let previousProjectDir;
+
 beforeEach(() => {
   previousCwd = process.cwd();
+  // Hooks prefer CLAUDE_PROJECT_DIR; a value inherited from a Claude Code
+  // session running the tests must not point them at a real project.
+  previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+  delete process.env.CLAUDE_PROJECT_DIR;
   vi.mocked(runClaudeStructured).mockReset();
 });
 
 afterEach(() => {
   process.chdir(previousCwd);
+  if (previousProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+  else process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+});
+
+const eligibleClassification = {
+  eligible: true,
+  timing: "ask_now",
+  delivery: "active",
+  moment_type: "predict",
+  learning_value: 3,
+  flow_cost: 1,
+  question: "What does the change do?",
+  expected_answer_outline: "It changes the file.",
+  reason: "A specific change worth a question.",
+  recall: { schedule: false, prompt_seed: "", delay: "next_session" },
+  storage: { summary: "A change.", tags: [] }
+};
+
+function hookInput(root, extra = {}) {
+  return {
+    session_id: "session-1",
+    transcript_path: path.join(root, "transcript.jsonl"),
+    cwd: root,
+    permission_mode: "default",
+    ...extra
+  };
+}
+
+describe("hook scoping", () => {
+  it("never creates data in a repository where init has not run", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await postToolUseHook(hookInput(root, { hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: path.join(root, "README.md") } }));
+    await stopHook(hookInput(root, { hook_event_name: "Stop" }));
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await runHook("stop", async () => {
+      throw new Error("failure in an uninitialized repository");
+    });
+    process.exitCode = 0;
+    await expect(fs.access(path.join(root, ".learning-moments"))).rejects.toThrow();
+  });
+
+  it("reads changes from a linked worktree and records them in the main checkout", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const worktree = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-wt-")), "wt");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "feature", worktree], { cwd: root });
+    const realWorktree = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: worktree, encoding: "utf8" }).trim();
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+
+    await sessionStartHook(hookInput(worktree, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(worktree, "README.md"), "changed in the worktree\n");
+    const output = await postToolBatchHook(hookInput(worktree, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+
+    expect(output?.hookSpecificOutput.additionalContext).toContain("What does the change do?");
+    expect(vi.mocked(runClaudeStructured).mock.calls[0][0].prompt).toContain("+changed in the worktree");
+    const events = await readEvents(root);
+    expect(events.find((event) => event.type === "session_baseline_created")?.snapshot.root).toBe(realWorktree);
+    await expect(fs.access(path.join(worktree, ".learning-moments"))).rejects.toThrow();
+  });
+
+  it("keeps reading the session's project when Claude cds into another repository", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const clone = await tempGitRepo();
+    process.env.CLAUDE_PROJECT_DIR = root;
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(clone, "README.md"), "edited in the clone\n");
+    await fs.writeFile(path.join(root, "README.md"), "edited in the project\n");
+    await postToolBatchHook(hookInput(clone, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+
+    const prompt = vi.mocked(runClaudeStructured).mock.calls[0][0].prompt;
+    expect(prompt).toContain("+edited in the project");
+    expect(prompt).not.toContain("edited in the clone");
+    await expect(fs.access(path.join(clone, ".learning-moments"))).rejects.toThrow();
+  });
+
+  it("keeps the main checkout when a worktree session's cwd moves elsewhere", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    const worktree = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "learning-moments-wt-")), "wt");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "feature", worktree], { cwd: root });
+    const elsewhere = await tempGitRepo();
+    process.env.CLAUDE_PROJECT_DIR = worktree;
+    const realRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: root, encoding: "utf8" }).trim();
+    const realWorktree = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: worktree, encoding: "utf8" }).trim();
+
+    const { resolveProject } = await import("../src/core/project.js");
+    await expect(resolveProject(elsewhere)).resolves.toEqual({ dataRoot: realRoot, workRoot: realWorktree });
+    await expect(resolveProject(os.tmpdir())).resolves.toEqual({ dataRoot: realRoot, workRoot: realWorktree });
+    await expect(resolveProject(worktree)).resolves.toEqual({ dataRoot: realRoot, workRoot: realWorktree });
+  });
+
+  it("ignores tool batches that run inside a subagent", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "after\n");
+
+    const output = await postToolBatchHook(
+      hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [], agent_id: "agent-abc123" })
+    );
+    expect(output).toBeNull();
+    expect(runClaudeStructured).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session baseline when SessionStart fires again after compaction", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    vi.mocked(runClaudeStructured).mockResolvedValueOnce({ output: eligibleClassification, metrics: testMetrics });
+
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    await fs.writeFile(path.join(root, "README.md"), "edited before compaction\n");
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "compact" }));
+    await postToolBatchHook(hookInput(root, { hook_event_name: "PostToolBatch", tool_calls: [] }));
+
+    const baselines = (await readEvents(root)).filter((event) => event.type === "session_baseline_created");
+    expect(baselines).toHaveLength(1);
+    expect(vi.mocked(runClaudeStructured).mock.calls[0][0].prompt).toContain("+edited before compaction");
+  });
+
+  it("keeps working after an interrupted append leaves a damaged log line", async () => {
+    const root = await tempGitRepo();
+    process.chdir(root);
+    await initCommand({});
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    const control = path.join(root, ".learning-moments", "control.jsonl");
+    await fs.appendFile(control, '{"id":"lm_event_partial","type":"session_basel');
+
+    await stopHook(hookInput(root, { hook_event_name: "Stop", last_assistant_message: "done" }));
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup", session_id: "session-2" }));
+
+    // The damaged bytes stay on their own line for inspection, and the
+    // next record starts on a fresh line instead of merging into them.
+    const lines = (await fs.readFile(control, "utf8")).split("\n").filter(Boolean);
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe('{"id":"lm_event_partial","type":"session_basel');
+    const events = await readEvents(root);
+    expect(events.filter((event) => event.type === "session_baseline_created")).toHaveLength(2);
+  });
 });
 
 describe("hook flow", () => {

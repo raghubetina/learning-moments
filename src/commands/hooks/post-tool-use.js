@@ -1,6 +1,6 @@
 import { appendEvent } from "../../core/log.js";
-import { findGitRoot } from "../../core/git.js";
 import { parseToolHookInput } from "../../core/hook-input.js";
+import { resolveProject } from "../../core/project.js";
 
 function toolFilePath(toolInput) {
   if (typeof toolInput !== "object" || toolInput === null || !("file_path" in toolInput)) {
@@ -16,7 +16,12 @@ export async function postToolUseHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parseToolHookInput(input);
-  const projectRoot = findGitRoot(parsed.cwd);
+  // Subagent edits are picked up from the working tree once the main
+  // conversation's own tool batch ends; nothing to record here.
+  if (parsed.agent_id) return;
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return;
+  const projectRoot = project.dataRoot;
   const filePath = toolFilePath(parsed.tool_input);
   await appendEvent(projectRoot, {
     type: "change_detected",

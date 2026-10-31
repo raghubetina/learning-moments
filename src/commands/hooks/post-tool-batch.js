@@ -3,12 +3,13 @@ import { classifyCandidate } from "../../core/classifier.js";
 import { loadConfig } from "../../core/config.js";
 import { candidateFiles } from "../../core/filter.js";
 import { candidateFingerprint } from "../../core/fingerprint.js";
-import { changedSinceBaseline, contextForFiles, findGitRoot, workspaceContext } from "../../core/git.js";
+import { changedSinceBaseline, contextForFiles, workspaceContext } from "../../core/git.js";
 import { parsePostToolBatchInput } from "../../core/hook-input.js";
 import { createId, shortId } from "../../core/ids.js";
 import { appendEvent, readControl, readLedger } from "../../core/log.js";
 import { latestSessionBaseline } from "../../core/state.js";
 import { withProjectLock } from "../../core/lock.js";
+import { resolveProject } from "../../core/project.js";
 
 export async function postToolBatchHook(input) {
   if (process.env.LEARNING_MOMENTS_INTERNAL === "1") {
@@ -16,10 +17,16 @@ export async function postToolBatchHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parsePostToolBatchInput(input);
-  // Resolve the project root cheaply (one git rev-parse) so we can short-
-  // circuit on pause/disabled before incurring the expense of a full
-  // working-tree snapshot, which hashes every dirty and untracked file.
-  const projectRoot = findGitRoot(parsed.cwd);
+  // Context added here would reach a subagent, not the developer, while
+  // still spending the question budget. The subagent's edits are seen
+  // when the main conversation's own tool batch ends.
+  if (parsed.agent_id) return null;
+  // Resolve the project cheaply so we can short-circuit on pause/disabled
+  // before incurring the expense of a full working-tree snapshot, which
+  // hashes every dirty and untracked file.
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return null;
+  const { dataRoot: projectRoot, workRoot } = project;
   const complete = async (outcome, extra = {}) => {
     await appendEvent(projectRoot, {
       type: "hook_completed",
@@ -65,18 +72,18 @@ export async function postToolBatchHook(input) {
   // Defer the working-tree context until after every early-return path so
   // that disabled, paused, or budget-exhausted invocations never pay for
   // path discovery (and never trigger lazy hashing).
-  const ctx = workspaceContext(parsed.cwd, config);
+  const ctx = workspaceContext(workRoot, config);
 
   // Baselines live in the control class — bounded retention so the hot
   // path doesn't read more history than it needs.
   const baseline = latestSessionBaseline(controlEvents, parsed.session_id) ?? {
-    root: projectRoot,
+    root: workRoot,
     head: ctx.head,
     branch: ctx.branch,
     candidates: [],
     hashes: {}
   };
-  if (baseline.head !== ctx.head || baseline.branch !== ctx.branch) {
+  if (baseline.root !== workRoot || baseline.head !== ctx.head || baseline.branch !== ctx.branch) {
     await appendEvent(projectRoot, {
       type: "session_baseline_created",
       session_id: parsed.session_id,
@@ -107,7 +114,7 @@ export async function postToolBatchHook(input) {
   // call (default 45s timeout vs. 5s lock acquisition timeout); a slow
   // model call shouldn't make a second hook fail-open just because one
   // request is in flight.
-  const diff = contextForFiles(projectRoot, files, config.context_limits.max_diff_chars);
+  const diff = contextForFiles(workRoot, files, config.context_limits.max_diff_chars);
   const fingerprint = candidateFingerprint(files, diff.text);
 
   const claim = await withProjectLock(projectRoot, "moment-claim", async () => {

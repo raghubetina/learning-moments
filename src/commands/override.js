@@ -1,4 +1,4 @@
-import { findGitRoot } from "../core/git.js";
+import { requireProject } from "../core/project.js";
 import { appendEvent } from "../core/log.js";
 
 export async function overrideCommand(momentId, options) {
@@ -6,7 +6,7 @@ export async function overrideCommand(momentId, options) {
   if (!Number.isInteger(grade) || grade < 0 || grade > 3) {
     throw new Error("--grade must be an integer from 0 to 3");
   }
-  const projectRoot = findGitRoot(process.cwd());
+  const { dataRoot: projectRoot } = await requireProject();
   await appendEvent(projectRoot, {
     type: "grade_created",
     moment_id: momentId,

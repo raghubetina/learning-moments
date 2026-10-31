@@ -114,9 +114,77 @@ export async function appendEvent(projectRoot, event) {
     const target = (await isMigrated(projectRoot))
       ? destinationPath(projectRoot, normalized.type)
       : logPath(projectRoot);
-    await fs.appendFile(target, `${JSON.stringify(normalized)}\n`);
+    const separator = (await endsMidLine(target)) ? "\n" : "";
+    await fs.appendFile(target, `${separator}${JSON.stringify(normalized)}\n`);
     return normalized;
   });
+}
+
+/**
+ * Whether `file` ends without a newline, as after an interrupted append.
+ * The next record must then start on a new line, or it would merge into
+ * the damaged one and be lost with it.
+ *
+ * @param {string} file
+ */
+async function endsMidLine(file) {
+  let handle;
+  try {
+    handle = await fs.open(file, "r");
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? /** @type {{code?: string}} */ (error).code : undefined;
+    if (code === "ENOENT") return false;
+    throw error;
+  }
+  try {
+    const { size } = await handle.stat();
+    if (size === 0) return false;
+    const last = Buffer.alloc(1);
+    await handle.read(last, 0, 1, size - 1);
+    return last[0] !== 0x0a;
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * @typedef {{ line: number, error: string }} MalformedLine
+ */
+
+/**
+ * Read a JSONL file, setting aside lines that do not parse as events.
+ * A damaged line, such as the tail of an interrupted append, must not
+ * make every later hook fail; `doctor` reports what was set aside.
+ *
+ * @param {string} file
+ * @param {string} label
+ * @returns {Promise<{ events: EventRecord[], malformed: MalformedLine[] }>}
+ */
+export async function scanJsonlFile(file, label) {
+  /** @type {string} */
+  let raw;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? /** @type {{code?: string}} */ (error).code : undefined;
+    if (code === "ENOENT") {
+      return { events: [], malformed: [] };
+    }
+    throw error;
+  }
+  /** @type {EventRecord[]} */
+  const events = [];
+  /** @type {MalformedLine[]} */
+  const malformed = [];
+  raw.split("\n").forEach((line, index) => {
+    if (line.trim().length === 0) return;
+    try {
+      events.push(parseEvent(JSON.parse(line), `${label}[${index}]`));
+    } catch (error) {
+      malformed.push({ line: index + 1, error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  return { events, malformed };
 }
 
 /**
@@ -125,21 +193,7 @@ export async function appendEvent(projectRoot, event) {
  * @returns {Promise<EventRecord[]>}
  */
 async function readJsonlFile(file, label) {
-  /** @type {string} */
-  let raw;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch (error) {
-    const code = typeof error === "object" && error && "code" in error ? /** @type {{code?: string}} */ (error).code : undefined;
-    if (code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-  return raw
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line, index) => parseEvent(JSON.parse(line), `${label}[${index}]`));
+  return (await scanJsonlFile(file, label)).events;
 }
 
 /**

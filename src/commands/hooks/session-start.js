@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import { loadConfig } from "../../core/config.js";
-import { findGitRoot, workspaceContext } from "../../core/git.js";
+import { workspaceContext } from "../../core/git.js";
 import { parseCommonHookInput } from "../../core/hook-input.js";
-import { appendEvent, parseEvent } from "../../core/log.js";
+import { appendEvent, parseEvent, readControl } from "../../core/log.js";
 import { withProjectLock } from "../../core/lock.js";
 import { controlPath, migrationCompletePath } from "../../core/paths.js";
+import { resolveProject } from "../../core/project.js";
+import { latestSessionBaseline } from "../../core/state.js";
 
 const CONTROL_HOT_RETENTION_MS = 60 * 60 * 1000;
 const SESSION_BASELINE_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -77,11 +79,13 @@ export async function sessionStartHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parseCommonHookInput(input);
-  // Resolve the project root cheaply (one git rev-parse) so we can short-
-  // circuit on pause/disabled before taking a working-tree snapshot. The
-  // snapshot hashes every dirty and untracked file, which we don't want to
-  // pay for when the user has disabled the tool for this session or project.
-  const projectRoot = findGitRoot(parsed.cwd);
+  // Resolve the project cheaply so we can short-circuit on pause/disabled
+  // before taking a working-tree snapshot. The snapshot hashes every dirty
+  // and untracked file, which we don't want to pay for when the user has
+  // disabled the tool for this session or project.
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return;
+  const { dataRoot: projectRoot, workRoot } = project;
   const complete = async (outcome) => {
     await appendEvent(projectRoot, {
       type: "hook_completed",
@@ -101,12 +105,23 @@ export async function sessionStartHook(input) {
     return;
   }
 
-  const ctx = workspaceContext(parsed.cwd, config);
+  // Resume, compaction, and /clear fire SessionStart again for a session
+  // that may already have a baseline. Replacing it would fold every change
+  // Claude made before that point into the new baseline, so those changes
+  // could never be asked about.
+  const existing = latestSessionBaseline(await readControl(projectRoot), parsed.session_id);
+  if (existing && existing.root === workRoot) {
+    await complete("session_baseline_kept");
+    return;
+  }
+
+  const ctx = workspaceContext(workRoot, config);
   await appendEvent(projectRoot, {
     type: "session_baseline_created",
     session_id: parsed.session_id,
     transcript_path: parsed.transcript_path,
     cwd: parsed.cwd,
+    source: typeof input.source === "string" ? input.source : undefined,
     snapshot: ctx.toBaseline()
   });
   // Best-effort pruning of the control log. We deliberately swallow errors:

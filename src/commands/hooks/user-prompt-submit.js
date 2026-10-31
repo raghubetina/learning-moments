@@ -1,6 +1,6 @@
-import { findGitRoot } from "../../core/git.js";
 import { loadConfig } from "../../core/config.js";
 import { gradeAnswer } from "../../core/grader.js";
+import { resolveProject } from "../../core/project.js";
 import { parseUserPromptSubmitInput } from "../../core/hook-input.js";
 import { appendEvent, readLedger } from "../../core/log.js";
 import { redactSecrets } from "../../core/redaction.js";
@@ -16,7 +16,9 @@ export async function userPromptSubmitHook(input) {
   }
   const startedAt = Date.now();
   const parsed = parseUserPromptSubmitInput(input);
-  const projectRoot = findGitRoot(parsed.cwd);
+  const project = await resolveProject(parsed.cwd);
+  if (!project) return null;
+  const projectRoot = project.dataRoot;
   const complete = async (outcome, extra = {}) => {
     await appendEvent(projectRoot, {
       type: "hook_completed",
