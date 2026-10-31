@@ -152,13 +152,17 @@ export async function classifyCandidate(projectRoot, config, input) {
       defaultPrompts["classify-change.md"] ?? ""
     )
   ]);
+  // An on-demand question relaxes "prefer silence"; verify.md says how.
+  const onDemand = input.onDemand
+    ? await readTextOrDefault(path.join(promptsDir(projectRoot), "verify.md"), defaultPrompts["verify.md"] ?? "")
+    : "";
 
   return attemptClaudeCall(
     () =>
       runClaudeStructured({
         projectRoot,
         config,
-        system: instruction.trim(),
+        system: onDemand ? `${instruction.trim()}\n\n${onDemand.trim()}` : instruction.trim(),
         prompt: buildClassifierPrompt(profile, input),
         schema: classifierJsonSchema,
         model: config.claude.classifier_model,
