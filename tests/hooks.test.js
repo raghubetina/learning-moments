@@ -1228,6 +1228,60 @@ describe("selecting what changed", () => {
     expect(promptOf(1)).toContain("seen later");
   });
 
+  it("reaches files after an oversized newest file without that file changing", async () => {
+    const root = await setup((config) => {
+      config.context_limits.max_diff_chars = 400;
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured)
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics })
+      .mockResolvedValueOnce({ output: declined, metrics: testMetrics });
+
+    await fs.writeFile(path.join(root, "b.js"), "export const b = 'seen later';\n");
+    await fs.writeFile(path.join(root, "a.js"), `export const a = "${"x".repeat(600)}";\n`);
+    await batch(root);
+    await batch(root);
+
+    expect(promptOf(0)).not.toContain("seen later");
+    expect(promptOf(1)).toContain("seen later");
+  });
+
+  it("gives a file the budget barely reached a full look next time", async () => {
+    const root = await setup((config) => {
+      config.context_limits.max_diff_chars = 400;
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured).mockResolvedValue({ output: declined, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "a.js"), "export const a = 'barely reached';\n");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fs.writeFile(path.join(root, "z.js"), `export const z = "${"x".repeat(340)}";\n`);
+    await batch(root);
+    await batch(root);
+    expect(promptOf(0)).not.toContain("barely reached");
+    expect(promptOf(1)).toContain("barely reached");
+    vi.mocked(runClaudeStructured).mockReset();
+  });
+
+  it("rotates between revised files instead of always showing the newest", async () => {
+    const root = await setup((config) => {
+      config.context_limits.max_diff_chars = 400;
+    });
+    await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));
+    vi.mocked(runClaudeStructured).mockResolvedValue({ output: declined, metrics: testMetrics });
+    await fs.writeFile(path.join(root, "a.js"), "export const a = 1;\n");
+    await fs.writeFile(path.join(root, "z.js"), "export const z = 1;\n");
+    await batch(root);
+    await fs.writeFile(path.join(root, "a.js"), "export const a = 'revised';\n");
+    for (let round = 0; round < 2; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await fs.writeFile(path.join(root, "z.js"), `export const z = "${String(round).repeat(500)}";\n`);
+      await batch(root);
+    }
+    const prompts = vi.mocked(runClaudeStructured).mock.calls.map((call) => call[0].prompt);
+    vi.mocked(runClaudeStructured).mockReset();
+    expect(prompts.slice(1).some((prompt) => prompt.includes("'revised'"))).toBe(true);
+  });
+
   it("records the version it showed, not one written while it waited", async () => {
     const root = await setup();
     await sessionStartHook(hookInput(root, { hook_event_name: "SessionStart", source: "startup" }));

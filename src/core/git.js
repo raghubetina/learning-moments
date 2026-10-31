@@ -404,7 +404,9 @@ function fileContext(root, file, base, version, since) {
 
 /**
  * @typedef {import("./redaction.js").RedactionResult & { complete: string[] }} FileContext
- *   `complete` lists the files whose context fit whole within the budget
+ *   `complete` lists the files the context covered: each one shown whole,
+ *   and the first file even when cut short, since it had the whole budget.
+ *   A later file the budget cut short or never reached is left out.
  */
 
 /**
@@ -448,6 +450,9 @@ export function contextForFiles(root, files, maxChars, options = {}) {
     if (redacted.text.length > remaining) {
       chunks.push(`${redacted.text.slice(0, remaining)}\n[context truncated]\n`);
       remaining = 0;
+      // A first file larger than the whole budget counts as seen; left
+      // eligible, it would take the whole budget again on every look.
+      if (chunks.length === 1) complete.push(file);
     } else {
       chunks.push(redacted.text);
       remaining -= redacted.text.length;
